@@ -142,13 +142,17 @@ function traverseAsarFiles(
   prefix: string,
   fullBuf: Buffer,
   baseOffset: number,
-  results: { relPath: string; content: string }[]
+  results: { relPath: string; content: string }[],
+  maxFiles = 200
 ) {
-  if (!tree) return;
+  if (!tree || results.length >= maxFiles) return;
   for (const [name, node] of Object.entries<any>(tree)) {
+    if (results.length >= maxFiles) break;
+    if (name === 'node_modules' || name.startsWith('.')) continue;
+
     const rel = prefix ? `${prefix}/${name}` : name;
     if (node.files) {
-      traverseAsarFiles(node.files, rel, fullBuf, baseOffset, results);
+      traverseAsarFiles(node.files, rel, fullBuf, baseOffset, results, maxFiles);
     } else if (typeof node.offset === 'string' || typeof node.offset === 'number') {
       const offset = baseOffset + parseInt(node.offset, 10);
       const size = parseInt(node.size, 10);

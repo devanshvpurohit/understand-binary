@@ -1,0 +1,30 @@
+{
+  "name": "understand-binary",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Reverse engineer binary applications and visualize their architecture as interactive knowledge graphs.",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r --filter=!@understand-binary/dashboard build && pnpm --filter=@understand-binary/dashboard build",
+    "test": "pnpm -r test",
+    "dev:dashboard": "pnpm --filter @understand-binary/dashboard dev",
+    "cli": "node packages/cli/dist/index.js"
+  },
+  "keywords": [
+    "reverse-engineering",
+    "binary-analysis",
+    "knowledge-graph",
+    "architecture-visualization",
+    "static-analysis",
+    "decompilation",
+    "electron",
+    "android",
+    "native"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  }
+}

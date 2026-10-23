@@ -4,10 +4,79 @@ import type {
   BinaryAnalysisResult,
   BinaryMetadata,
   AnalysisOptions,
+  DisassembledFunction,
 } from '../types.js';
 import { analyzeNativeBinary } from './native.js';
 import { analyzeElectronTarget } from './electron.js';
 import { inspectBinaryFormat } from '../detector.js';
+
+function extractEmbeddedScriptModules(resourcesDir: string): {
+  modules: BinaryAnalysisResult['modules'];
+  functions: DisassembledFunction[];
+} {
+  const modules: BinaryAnalysisResult['modules'] = [];
+  const functions: DisassembledFunction[] = [];
+
+  function scanDir(dir: string, baseDir: string) {
+    if (!fs.existsSync(dir)) return;
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const ent of entries) {
+        const fullPath = path.join(dir, ent.name);
+        if (ent.isDirectory() && ent.name !== 'localization' && !ent.name.startsWith('.')) {
+          scanDir(fullPath, baseDir);
+        } else if (ent.isFile() && (ent.name.endsWith('.lua') || ent.name.endsWith('.js'))) {
+          const relPath = path.relative(baseDir, fullPath);
+          const modName = relPath.replace(/\.(lua|js)$/, '').replace(/\//g, '::');
+          const content = fs.readFileSync(fullPath, 'utf-8');
+
+          const modFuncs: string[] = [];
+          const fnRegex = /function\s+([A-Za-z0-9_.:]+)\s*\(/g;
+          let match;
+          while ((match = fnRegex.exec(content)) !== null) {
+            const fnName = match[1];
+            if (!fnName.includes('(') && fnName.length > 2 && !modFuncs.includes(fnName)) {
+              modFuncs.push(fnName);
+              const lineNo = content.slice(0, match.index).split('\n').length;
+              functions.push({
+                id: `fn_${fnName.replace(/[^a-zA-Z0-9_]/g, '_')}`,
+                name: fnName,
+                address: `script://${relPath}#L${lineNo}`,
+                moduleName: modName,
+                isExported: true,
+                isImported: false,
+                callers: [],
+                callees: [],
+                xrefs: [],
+                instructions: [],
+                detectedRole: fnName.includes('save') || fnName.includes('file')
+                  ? 'storage'
+                  : fnName.includes('http') || fnName.includes('network')
+                  ? 'network'
+                  : fnName.includes('ui') || fnName.includes('button')
+                  ? 'ui'
+                  : fnName.includes('state') || fnName.includes('game')
+                  ? 'core'
+                  : 'general',
+                pseudoCode: `// Script function from ${relPath}:${lineNo}\nfunction ${fnName}(...)`,
+                provenance: 'verified_fact',
+              });
+            }
+          }
+
+          modules.push({
+            name: modName,
+            type: 'js_file',
+            functions: modFuncs,
+          });
+        }
+      }
+    } catch {}
+  }
+
+  scanDir(resourcesDir, resourcesDir);
+  return { modules, functions };
+}
 
 export async function analyzeMacOSApp(
   appPath: string,
@@ -16,7 +85,8 @@ export async function analyzeMacOSApp(
   const contentsDir = path.join(appPath, 'Contents');
   const macosDir = path.join(contentsDir, 'MacOS');
   const plistPath = path.join(contentsDir, 'Info.plist');
-  const asarPath = path.join(contentsDir, 'Resources', 'app.asar');
+  const resourcesDir = path.join(contentsDir, 'Resources');
+  const asarPath = path.join(resourcesDir, 'app.asar');
 
   // 1. Resolve Executable Name from Info.plist or directory listing
   let execName = '';
@@ -105,12 +175,23 @@ export async function analyzeMacOSApp(
     };
   }
 
-  // 3. If purely native Cocoa / Mach-O application
+  // 3. Pure native Cocoa / Mach-O application (+ embedded game/runtime scripts)
   if (nativeBinaryPath && fs.existsSync(nativeBinaryPath)) {
     const nativeRes = await analyzeNativeBinary(nativeBinaryPath, options);
     nativeRes.metadata.fileName = path.basename(appPath, '.app');
     nativeRes.metadata.filePath = appPath;
     nativeRes.metadata.format = 'macos_app';
+
+    // If application contains embedded game or application scripts (e.g. Balatro LÖVE2D scripts)
+    if (fs.existsSync(resourcesDir)) {
+      const embedded = extractEmbeddedScriptModules(resourcesDir);
+      if (embedded.modules.length > 0) {
+        nativeRes.modules.push(...embedded.modules);
+        nativeRes.functions.push(...embedded.functions);
+        nativeRes.metadata.functionsCount = nativeRes.functions.length;
+      }
+    }
+
     return nativeRes;
   }
 

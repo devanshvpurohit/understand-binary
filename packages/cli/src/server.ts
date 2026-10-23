@@ -315,12 +315,26 @@ export function startDashboardServer(graphDir: string, port = 3000): Promise<str
       }
     }
 
-    // GET /ua - Direct Understand-Anything React Flow dashboard
+    // GET /meta.json, /config.json, /staleness.json, /diff-overlay.json (for Understand-Anything client)
+    if (url.pathname === '/meta.json' || url.pathname === '/config.json' || url.pathname === '/staleness.json' || url.pathname === '/diff-overlay.json') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ outputLanguage: 'en', stale: false }));
+      return;
+    }
+
+    // GET /ua - Direct Understand-Anything React Flow dashboard (zero key/token required)
     if (url.pathname === '/ua' || url.pathname === '/understand-anything') {
       const uaIndex = path.join(dashboardDist, 'index.html');
       if (fs.existsSync(uaIndex)) {
+        let content = fs.readFileSync(uaIndex, 'utf-8');
+        if (!content.includes('understand-anything-token')) {
+          content = content.replace(
+            '<head>',
+            '<head><script>sessionStorage.setItem("understand-anything-token", "ub-open-access");</script>'
+          );
+        }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        fs.createReadStream(uaIndex).pipe(res);
+        res.end(content);
         return;
       }
     }
@@ -431,9 +445,9 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       <div id="network"></div>
     </div>
 
-    <!-- Understand-Anything Embedded View -->
+    <!-- Understand-Anything Embedded View (Zero token/key required) -->
     <div id="ua-view" class="hidden flex-1 w-full h-full relative bg-gray-950">
-      <iframe src="/ua" class="w-full h-full border-0" id="ua-iframe"></iframe>
+      <iframe src="/ua?token=ub-open-access" class="w-full h-full border-0" id="ua-iframe"></iframe>
     </div>
 
     <!-- Call Path Explorer View -->

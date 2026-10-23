@@ -22,6 +22,7 @@ program
   .option('-o, --output <dir>', 'Output directory for analysis artifacts', '.ub')
   .option('--dashboard', 'Immediately launch interactive visualization dashboard after analysis', false)
   .option('-p, --port <port>', 'Dashboard port', '3000')
+  .option('-f, --force', 'Force full re-analysis even if cached artifacts exist', false)
   .action(async (target: string, options) => {
     try {
       const targetPath = path.resolve(process.cwd(), target);
@@ -33,49 +34,74 @@ program
       console.log(pc.cyan(`\n🔍 [Understand-Binary] Ingesting and analyzing target:`));
       console.log(`   ${pc.bold(targetPath)}\n`);
 
-      const startTime = Date.now();
-
-      // Phase 1: REA Ingestion, Disassembly, & Symbol Extraction
-      console.log(pc.blue(`[1/4] Running extraction, disassembly & instruction decoding...`));
-      const reResult = await analyzeBinaryTarget(targetPath);
-      console.log(
-        pc.gray(
-          `      Format: ${pc.green(reResult.metadata.format.toUpperCase())} (${reResult.metadata.architecture}) | Functions: ${pc.white(
-            reResult.functions.length.toString()
-          )} | Strings: ${pc.white(reResult.strings.length.toString())}`
-        )
-      );
-
-      // Phase 2: Bridge & Architectural Normalization
-      console.log(pc.blue(`[2/4] Normalizing symbols, instruction xrefs and inferring subsystems...`));
-      const archIR = normalizeBinaryAnalysis(reResult);
-      console.log(
-        pc.gray(
-          `      Subsystems: ${pc.magenta(archIR.subsystems.length.toString())} | Components: ${pc.white(
-            archIR.components.length.toString()
-          )} | Relationships: ${pc.white(archIR.relationships.length.toString())}`
-        )
-      );
-
-      // Phase 3: Static Security Findings Scanner
-      console.log(pc.blue(`[3/4] Scanning for security findings and unsafe primitives...`));
-      const securityFindings = scanSecurityFindings(archIR);
-      console.log(
-        pc.gray(
-          `      Security Findings: ${securityFindings.length > 0 ? pc.yellow(securityFindings.length.toString()) : pc.green('0')}`
-        )
-      );
-
-      // Phase 4: Understand-Anything Knowledge Graph Synthesis
-      console.log(pc.blue(`[4/4] Synthesizing Understand-Anything knowledge graph...`));
-      const knowledgeGraph = synthesizeKnowledgeGraph(archIR);
-
-      // Persist Artifacts
       const outDir = path.resolve(process.cwd(), options.output);
-      if (!fs.existsSync(outDir)) {
-        fs.mkdirSync(outDir, { recursive: true });
+      const cacheDir = path.join(outDir, 'cache');
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
       }
 
+      const startTime = Date.now();
+
+      // Check SHA-256 cache
+      const fileBuffer = fs.readFileSync(targetPath);
+      const sha256 = (await import('node:crypto')).createHash('sha256').update(fileBuffer).digest('hex');
+      const cacheFile = path.join(cacheDir, `${sha256}.json`);
+
+      let knowledgeGraph: any;
+      let archIR: any;
+      let securityFindings: any;
+
+      if (!options.force && fs.existsSync(cacheFile)) {
+        console.log(pc.green(`✓ Loading cached analysis results (${pc.dim(sha256.substring(0, 16))}...)`));
+        const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+        knowledgeGraph = cached.knowledgeGraph;
+        archIR = cached.archIR;
+        securityFindings = cached.securityFindings;
+      } else {
+        // Phase 1: REA Ingestion, Disassembly, & Symbol Extraction
+        console.log(pc.blue(`[1/4] Running extraction, disassembly & instruction decoding...`));
+        const reResult = await analyzeBinaryTarget(targetPath);
+        console.log(
+          pc.gray(
+            `      Format: ${pc.green(reResult.metadata.format.toUpperCase())} (${reResult.metadata.architecture}) | Functions: ${pc.white(
+              reResult.functions.length.toString()
+            )} | Strings: ${pc.white(reResult.strings.length.toString())}`
+          )
+        );
+
+        // Phase 2: Bridge & Architectural Normalization
+        console.log(pc.blue(`[2/4] Normalizing symbols, instruction xrefs and inferring subsystems...`));
+        archIR = normalizeBinaryAnalysis(reResult);
+        console.log(
+          pc.gray(
+            `      Subsystems: ${pc.magenta(archIR.subsystems.length.toString())} | Components: ${pc.white(
+              archIR.components.length.toString()
+            )} | Relationships: ${pc.white(archIR.relationships.length.toString())}`
+          )
+        );
+
+        // Phase 3: Static Security Findings Scanner
+        console.log(pc.blue(`[3/4] Scanning for security findings and unsafe primitives...`));
+        securityFindings = scanSecurityFindings(archIR);
+        console.log(
+          pc.gray(
+            `      Security Findings: ${securityFindings.length > 0 ? pc.yellow(securityFindings.length.toString()) : pc.green('0')}`
+          )
+        );
+
+        // Phase 4: Understand-Anything Knowledge Graph Synthesis
+        console.log(pc.blue(`[4/4] Synthesizing Understand-Anything knowledge graph...`));
+        knowledgeGraph = synthesizeKnowledgeGraph(archIR);
+
+        // Save Cache
+        fs.writeFileSync(
+          cacheFile,
+          JSON.stringify({ knowledgeGraph, archIR, securityFindings }, null, 2),
+          'utf-8'
+        );
+      }
+
+      // Persist Artifacts
       const graphFile = path.join(outDir, 'knowledge-graph.json');
       const irFile = path.join(outDir, 'architecture-ir.json');
       const findingsFile = path.join(outDir, 'security-findings.json');

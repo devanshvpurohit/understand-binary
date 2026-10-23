@@ -1,6 +1,8 @@
 import type { ArchitectureIR } from '@understand-binary/bridge';
 import { BinaryInspectionTools } from './tools.js';
 import { resolveLLMProvider, type LLMProvider } from './providers.js';
+import { HybridRetriever } from './retrieval.js';
+import { scanSecurityFindings } from './findings.js';
 
 export interface InvestigationResult {
   question: string;
@@ -19,10 +21,12 @@ export interface InvestigationResult {
 
 export class BinaryInvestigator {
   private tools: BinaryInspectionTools;
+  private retriever: HybridRetriever;
   private provider: LLMProvider | null;
 
   constructor(ir: ArchitectureIR, provider?: LLMProvider) {
     this.tools = new BinaryInspectionTools(ir);
+    this.retriever = new HybridRetriever(ir, scanSecurityFindings(ir));
     this.provider = provider || resolveLLMProvider();
   }
 
@@ -124,6 +128,25 @@ export class BinaryInvestigator {
           description: finding.description,
           confidence: finding.confidence,
         });
+      }
+    }
+
+    // Hybrid Semantic Retrieval (Phase 6 RAG)
+    const retrieved = this.retriever.retrieve(question, 4);
+    if (retrieved.length > 0) {
+      toolCallsExecuted.push(`hybrid_retrieval(score_top: ${retrieved[0].score})`);
+      for (const r of retrieved) {
+        const fact = `[${r.kind.toUpperCase()}] ${r.title} at ${r.addressOrLocation}`;
+        if (!provenFacts.includes(fact)) {
+          provenFacts.push(fact);
+        }
+        if (!evidenceCitations.some((c) => c.addressOrSymbol === r.addressOrLocation)) {
+          evidenceCitations.push({
+            addressOrSymbol: r.addressOrLocation,
+            description: `${r.title} (relevance score: ${r.score})`,
+            confidence: 'high',
+          });
+        }
       }
     }
 

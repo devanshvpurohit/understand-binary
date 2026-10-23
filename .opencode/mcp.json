@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "understand-binary": {
+      "command": "ub",
+      "args": ["mcp", ".ub"],
+      "env": {}
+    }
+  }
+}

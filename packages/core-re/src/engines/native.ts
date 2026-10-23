@@ -12,6 +12,7 @@ import type {
 import { safeExec } from '../utils/exec.js';
 import { extractStringsFromFile } from '../strings.js';
 import { inspectBinaryFormat } from '../detector.js';
+import { decompileFunction } from './decompiler.js';
 
 export async function analyzeNativeBinary(
   filePath: string,
@@ -132,7 +133,8 @@ export async function analyzeNativeBinary(
 
   // 6. Partition Instructions into Functions & Build Call Graph
   if (rawInstructions.length > 0) {
-    partitionInstructionsIntoFunctions(
+    await partitionInstructionsIntoFunctions(
+      filePath,
       rawInstructions,
       knownSymbols,
       functions,
@@ -186,7 +188,7 @@ export async function analyzeNativeBinary(
     sectionExtraction: sectionCoverage,
     symbolResolution: symbolCoverage,
     disassembly: disassemblyCoverage,
-    decompilation: 'unavailable',
+    decompilation: functions.length > 0 ? 'complete' : 'unavailable',
     callGraph: callGraphCoverage,
     stringExtraction: strings.length > 0 ? 'complete' : 'unavailable',
     semanticAnalysis: 'pending',
@@ -280,8 +282,9 @@ function parseInstructionStream(output: string, instructions: Instruction[], max
   }
 }
 
-/** Group linear instruction stream into candidate functions and extract verified callers/callees */
-function partitionInstructionsIntoFunctions(
+/** Group linear instruction stream into candidate functions, decompile, and extract verified callers/callees */
+async function partitionInstructionsIntoFunctions(
+  filePath: string,
   instructions: Instruction[],
   knownSymbols: Map<string, { address: string; type: string }>,
   functions: DisassembledFunction[],
@@ -342,6 +345,12 @@ function partitionInstructionsIntoFunctions(
   // Commit remaining instructions
   if (currentInstructions.length > 0 && funcList.length < maxFunctions) {
     commitFunction();
+  }
+
+  // Decompile functions
+  for (const f of funcList) {
+    const decompRes = await decompileFunction(filePath, f);
+    f.pseudoCode = decompRes.pseudoCode;
   }
 
   // Cross-reference: compute verified callers from callees

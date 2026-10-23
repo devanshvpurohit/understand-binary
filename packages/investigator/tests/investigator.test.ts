@@ -4,6 +4,7 @@ import {
   BinaryInspectionTools,
   scanSecurityFindings,
   BinaryInvestigator,
+  HybridRetriever,
 } from '../dist/index.js';
 import type { ArchitectureIR } from '@understand-binary/bridge';
 
@@ -140,6 +141,15 @@ test('Inspection Tools: Traces static execution call path using BFS', () => {
   assert.equal(pathResult.path![0].name, 'main_entry');
   assert.equal(pathResult.path![1].name, 'dispatch_pipeline');
   assert.equal(pathResult.path![2].name, 'system');
+});
+
+test('Hybrid Retriever: Retrieves semantically relevant functions and findings', () => {
+  const ir = createSampleIR();
+  const retriever = new HybridRetriever(ir, scanSecurityFindings(ir));
+
+  const chunks = retriever.retrieve('dispatch pipeline execution');
+  assert.ok(chunks.length > 0);
+  assert.ok(chunks.some((c) => c.title.includes('dispatch_pipeline')));
 });
 
 test('Binary Investigator: Executes evidence-backed investigation without hallucination', async () => {

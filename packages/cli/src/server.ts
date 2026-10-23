@@ -159,6 +159,9 @@ export function startDashboardServer(graphDir: string, port = 3000): Promise<str
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -872,6 +875,13 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       if (activeBtn) activeBtn.className = 'px-3 py-1 rounded bg-cyan-600 text-white transition';
       if (tab === 'graph') {
         setTimeout(() => { network.fit(); }, 100);
+      }
+      if (tab === 'ua') {
+        const iframe = document.getElementById('ua-iframe');
+        if (iframe && (!iframe.dataset.loaded || iframe.dataset.loaded === 'false')) {
+          iframe.src = '/ua?token=ub-open-access&t=' + Date.now();
+          iframe.dataset.loaded = 'true';
+        }
       }
     }
 

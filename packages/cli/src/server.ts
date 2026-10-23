@@ -2,7 +2,38 @@ import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ArchitectureIR } from '@understand-binary/bridge';
-import { BinaryInspectionTools, BinaryInvestigator, scanSecurityFindings } from '@understand-binary/investigator';
+import {
+  BinaryInspectionTools,
+  BinaryInvestigator,
+  scanSecurityFindings,
+  GeminiProvider,
+  ClaudeProvider,
+  OpenAIProvider,
+  OllamaProvider,
+  type LLMProvider,
+} from '@understand-binary/investigator';
+
+export interface ClientProviderConfig {
+  provider: string;
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+}
+
+export function createCustomProvider(config?: ClientProviderConfig): LLMProvider | null {
+  if (!config || !config.provider) return null;
+  const p = config.provider.toLowerCase();
+  if (p === 'gemini') {
+    return new GeminiProvider(config.apiKey, config.model || 'gemini-1.5-flash');
+  } else if (p === 'claude') {
+    return new ClaudeProvider(config.apiKey, config.model || 'claude-3-5-sonnet-20241022');
+  } else if (p === 'openai') {
+    return new OpenAIProvider(config.apiKey, config.model || 'gpt-4o-mini');
+  } else if (p === 'ollama') {
+    return new OllamaProvider(config.baseUrl || 'http://localhost:11434', config.model || 'llama3.2');
+  }
+  return null;
+}
 
 export function startDashboardServer(graphDir: string, port = 3000): Promise<string> {
   const graphPath = path.join(graphDir, 'knowledge-graph.json');
@@ -16,14 +47,14 @@ export function startDashboardServer(graphDir: string, port = 3000): Promise<str
   // Load IR into memory for interactive inspection & path queries
   let ir: ArchitectureIR | null = null;
   let tools: BinaryInspectionTools | null = null;
-  let investigator: BinaryInvestigator | null = null;
+  let defaultInvestigator: BinaryInvestigator | null = null;
 
   if (fs.existsSync(irPath)) {
     try {
       ir = JSON.parse(fs.readFileSync(irPath, 'utf-8'));
       if (ir) {
         tools = new BinaryInspectionTools(ir);
-        investigator = new BinaryInvestigator(ir);
+        defaultInvestigator = new BinaryInvestigator(ir);
       }
     } catch {}
   }
@@ -88,19 +119,64 @@ export function startDashboardServer(graphDir: string, port = 3000): Promise<str
       return;
     }
 
+    // POST /api/test-llm (In-browser LLM key test)
+    if (url.pathname === '/api/test-llm' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', async () => {
+        try {
+          const config = JSON.parse(body);
+          const provider = createCustomProvider(config);
+          if (!provider) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: 'Unsupported or missing provider specification' }));
+            return;
+          }
+
+          const pingResp = await provider.generateText([
+            { role: 'user', content: 'Say "UB-LLM-OK" if you can read this message.' },
+          ]);
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              success: true,
+              message: `Successfully connected to ${provider.name}`,
+              snippet: pingResp.slice(0, 80).trim(),
+            })
+          );
+        } catch (err: any) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: err.message || 'LLM connection failed' }));
+        }
+      });
+      return;
+    }
+
     // POST /api/investigate
     if (url.pathname === '/api/investigate' && req.method === 'POST') {
       let body = '';
       req.on('data', (chunk) => (body += chunk));
       req.on('end', async () => {
         try {
-          const { question } = JSON.parse(body);
-          if (!investigator) {
+          const { question, providerConfig } = JSON.parse(body);
+          let activeInvestigator = defaultInvestigator;
+
+          // If browser client supplied custom LLM credentials, instantiate dynamically
+          if (providerConfig && ir) {
+            const customProvider = createCustomProvider(providerConfig);
+            if (customProvider) {
+              activeInvestigator = new BinaryInvestigator(ir, customProvider);
+            }
+          }
+
+          if (!activeInvestigator) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Investigator not initialized' }));
             return;
           }
-          const result = await investigator.investigate(question);
+
+          const result = await activeInvestigator.investigate(question);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(result, null, 2));
         } catch (err: any) {
@@ -153,14 +229,15 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
   <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
   <style>
     body { background-color: #0B0F17; color: #E2E8F0; font-family: ui-sans-serif, system-ui, sans-serif; }
-    #network { width: 100%; height: calc(100vh - 65px); background: radial-gradient(circle at center, #131A29 0%, #0B0F17 100%); }
+    #graph-view { position: relative; width: 100%; height: 100%; min-height: 500px; }
+    #network { position: absolute; inset: 0; width: 100%; height: 100%; background: radial-gradient(circle at center, #131A29 0%, #0B0F17 100%); }
     .panel-scroll::-webkit-scrollbar { width: 6px; }
     .panel-scroll::-webkit-scrollbar-thumb { background: #2D3748; border-radius: 4px; }
   </style>
 </head>
 <body class="flex flex-col h-screen overflow-hidden">
   <!-- Top Navigation Bar -->
-  <header class="h-16 border-b border-gray-800 bg-gray-900/90 backdrop-blur px-6 flex items-center justify-between shrink-0 z-30">
+  <header class="h-16 border-b border-gray-800 bg-gray-900/95 backdrop-blur px-6 flex items-center justify-between shrink-0 z-30">
     <div class="flex items-center gap-3">
       <div class="w-8 h-8 rounded bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20">
         UB
@@ -175,13 +252,9 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       </div>
     </div>
 
-    <!-- Center Search & Controls -->
+    <!-- Center Navigation Tabs -->
     <div class="flex items-center gap-3">
-      <input type="text" id="search-box" placeholder="Search functions, addresses, strings..." class="px-3 py-1.5 bg-gray-800/80 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-cyan-500 w-64 text-gray-200">
-      <button onclick="network.fit({ animation: true })" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-xs font-medium rounded-lg border border-gray-700 transition">
-        Reset View
-      </button>
-      <div class="h-6 w-px bg-gray-800"></div>
+      <input type="text" id="search-box" oninput="searchGraph(this.value)" placeholder="Search symbols, functions..." class="px-3 py-1.5 bg-gray-800/80 border border-gray-700 rounded-lg text-xs focus:outline-none focus:border-cyan-500 w-56 text-gray-200">
       <div class="flex rounded-lg bg-gray-800 p-0.5 text-xs font-medium border border-gray-700">
         <button id="tab-btn-graph" onclick="switchMainTab('graph')" class="px-3 py-1 rounded bg-cyan-600 text-white transition">Graph</button>
         <button id="tab-btn-path" onclick="switchMainTab('path')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">Call Path</button>
@@ -190,12 +263,13 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       </div>
     </div>
 
-    <!-- Metrics Badge -->
-    <div class="flex items-center gap-4 text-xs font-mono">
-      <div class="text-right">
-        <div class="text-gray-400">Coverage</div>
-        <div class="text-emerald-400 font-bold" id="coverage-status">COMPLETE</div>
-      </div>
+    <!-- Right Controls: LLM Settings Modal Trigger & Status -->
+    <div class="flex items-center gap-3">
+      <button onclick="openLlmModal()" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs transition">
+        <span id="llm-status-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span id="llm-status-text" class="text-gray-300 font-medium">LLM Config</span>
+        <span class="text-gray-400 text-[11px]">⚙️</span>
+      </button>
     </div>
   </header>
 
@@ -203,6 +277,28 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
   <div class="flex flex-1 relative overflow-hidden">
     <!-- Network Graph View -->
     <div id="graph-view" class="flex-1 w-full h-full relative">
+      <!-- Floating View & Layer Filter Controls -->
+      <div class="absolute top-4 left-4 z-10 flex flex-wrap items-center gap-2 bg-gray-900/90 backdrop-blur p-1.5 rounded-xl border border-gray-800 shadow-2xl text-xs">
+        <span class="text-gray-400 font-semibold px-2">View:</span>
+        <button id="filter-arch-btn" onclick="setGraphFilter('architecture')" class="px-3 py-1 rounded-lg font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition">
+          🏛️ Architecture (<span id="count-arch">0</span>)
+        </button>
+        <button id="filter-services-btn" onclick="setGraphFilter('services')" class="px-3 py-1 rounded-lg font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition">
+          ⚡ Modules & APIs (<span id="count-services">0</span>)
+        </button>
+        <button id="filter-all-btn" onclick="setGraphFilter('all')" class="px-3 py-1 rounded-lg font-medium bg-cyan-600 text-white transition">
+          🌐 All Nodes (<span id="count-all">0</span>)
+        </button>
+        <div class="h-4 w-px bg-gray-800 mx-1"></div>
+        <select id="layer-filter-select" onchange="filterByLayer(this.value)" class="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded-lg px-2 py-1 focus:outline-none">
+          <option value="all">All Subsystems</option>
+        </select>
+        <div class="h-4 w-px bg-gray-800 mx-1"></div>
+        <button onclick="network.fit({ animation: { duration: 400 } })" class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-cyan-400 rounded-lg text-xs font-medium border border-gray-700" title="Fit All Nodes in View">
+          ⛶ Fit View
+        </button>
+      </div>
+
       <div id="network"></div>
     </div>
 
@@ -239,7 +335,10 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     <div id="chat-view" class="hidden flex-1 flex flex-col bg-gray-950 p-6">
       <div class="flex-1 overflow-y-auto panel-scroll space-y-4 mb-4 max-w-3xl mx-auto w-full" id="chat-messages">
         <div class="p-4 rounded-xl bg-gray-900/80 border border-gray-800 text-xs text-gray-300">
-          <div class="font-bold text-cyan-400 mb-1">Understand-Binary Investigator</div>
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-bold text-cyan-400">Understand-Binary Investigator</span>
+            <span id="chat-provider-badge" class="font-mono text-[10px] px-2 py-0.5 rounded bg-gray-800 text-gray-300 border border-gray-700">Offline Deterministic</span>
+          </div>
           Ask any technical question about this binary (e.g. "Explain the startup sequence", "Find code handling network requests", "Where is encryption or authentication implemented?"). Every response cites verified evidence.
         </div>
       </div>
@@ -250,7 +349,7 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     </div>
 
     <!-- Right Drawer: Technical Inspector -->
-    <aside id="inspector" class="w-96 border-l border-gray-800 bg-gray-900/90 backdrop-blur flex flex-col z-20 shrink-0">
+    <aside id="inspector" class="w-96 border-l border-gray-800 bg-gray-900/95 backdrop-blur flex flex-col z-20 shrink-0">
       <div class="p-4 border-b border-gray-800 flex items-center justify-between">
         <h2 class="text-xs font-semibold uppercase tracking-wider text-gray-400">Symbol & Evidence Inspector</h2>
         <span id="node-provenance-badge" class="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono">VERIFIED FACT</span>
@@ -286,6 +385,70 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     </aside>
   </div>
 
+  <!-- In-Browser LLM Configuration Modal -->
+  <div id="llm-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+        <div class="flex items-center gap-2">
+          <span class="text-cyan-400 text-lg">⚙️</span>
+          <h3 class="font-bold text-white text-base">In-Browser LLM Configuration</h3>
+        </div>
+        <button onclick="closeLlmModal()" class="text-gray-400 hover:text-white text-lg">&times;</button>
+      </div>
+
+      <p class="text-xs text-gray-400">
+        Configure an AI provider to investigate this binary using verified facts and disassembly evidence. Keys are stored securely in your browser (<code class="text-cyan-400">localStorage</code>) — no server <code class="text-cyan-400">.env</code> required.
+      </p>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-300 mb-1">Provider</label>
+          <select id="modal-llm-provider" onchange="onLlmProviderChange()" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+            <option value="gemini">Google Gemini (Recommended - Fast & Accurate)</option>
+            <option value="claude">Anthropic Claude (Sonnet 3.5)</option>
+            <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
+            <option value="ollama">Local Ollama (Offline / Private)</option>
+          </select>
+        </div>
+
+        <div id="modal-apikey-group">
+          <div class="flex justify-between items-center mb-1">
+            <label class="text-xs font-semibold text-gray-300">API Key</label>
+            <span class="text-[10px] text-gray-500" id="modal-apikey-hint">Stored in browser localStorage</span>
+          </div>
+          <div class="relative">
+            <input type="password" id="modal-llm-key" placeholder="Enter API Key (e.g. AIzaSy...)" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 pr-10 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
+            <button type="button" onclick="toggleKeyVisibility()" class="absolute right-2.5 top-2 text-gray-400 hover:text-white text-xs">👁️</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-300 mb-1">Model Name</label>
+          <input type="text" id="modal-llm-model" placeholder="gemini-1.5-flash" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
+        </div>
+
+        <div id="modal-baseurl-group" class="hidden">
+          <label class="block text-xs font-semibold text-gray-300 mb-1">Ollama Base URL</label>
+          <input type="text" id="modal-llm-url" placeholder="http://localhost:11434" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
+        </div>
+      </div>
+
+      <div id="modal-test-status" class="hidden p-2.5 rounded-lg text-xs font-mono"></div>
+
+      <div class="pt-2 flex items-center justify-between border-t border-gray-800">
+        <button onclick="clearLlmConfig()" class="text-xs text-red-400 hover:underline">Clear & Use Offline</button>
+        <div class="flex gap-2">
+          <button onclick="testLlmConnection()" id="modal-test-btn" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg text-xs font-medium transition">
+            Test Connection
+          </button>
+          <button onclick="saveLlmConfig()" class="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-medium transition">
+            Save Settings
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const graphData = ${graphJson};
     const irData = ${irJson};
@@ -300,16 +463,30 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     }
     document.getElementById('sec-count').innerText = findingsData.length;
 
-    // Render Subsystem Layers
+    // Populate Layers & Layer Filter Select
     const layersList = document.getElementById('layers-list');
+    const layerSelect = document.getElementById('layer-filter-select');
     graphData.layers.forEach(layer => {
       const el = document.createElement('div');
-      el.className = 'p-2 rounded bg-gray-800/40 border border-gray-800 text-xs text-gray-300 flex justify-between items-center';
+      el.className = 'p-2 rounded bg-gray-800/40 border border-gray-800 text-xs text-gray-300 flex justify-between items-center cursor-pointer hover:border-gray-700';
+      el.onclick = () => filterByLayer(layer.id);
       el.innerHTML = '<span class="font-medium">' + layer.name + '</span><span class="text-gray-500 font-mono">' + layer.nodeIds.length + ' items</span>';
       layersList.appendChild(el);
+
+      const opt = document.createElement('option');
+      opt.value = layer.id;
+      opt.innerText = layer.name;
+      layerSelect.appendChild(opt);
     });
 
-    // Render Findings
+    // Populate Counts
+    const archNodes = graphData.nodes.filter(n => n.type === 'service' || n.type === 'module');
+    const servicesNodes = graphData.nodes.filter(n => n.type === 'service' || n.type === 'module' || n.type === 'endpoint');
+    document.getElementById('count-arch').innerText = archNodes.length;
+    document.getElementById('count-services').innerText = servicesNodes.length;
+    document.getElementById('count-all').innerText = graphData.nodes.length;
+
+    // Render Findings View
     const findingsContainer = document.getElementById('findings-container');
     if (findingsData.length === 0) {
       findingsContainer.innerHTML = '<div class="p-4 bg-gray-900 border border-gray-800 rounded-xl text-xs text-gray-400">No static security vulnerabilities or hardcoded secret patterns detected.</div>';
@@ -328,58 +505,182 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       });
     }
 
-    // Build Vis-Network Graph
-    const roleColors = { service: '#6366F1', module: '#06B6D4', function: '#10B981', endpoint: '#F59E0B' };
-    const visNodes = graphData.nodes.map(n => ({
-      id: n.id,
-      label: n.name,
-      title: n.summary,
-      color: { background: roleColors[n.type] || '#64748B', border: '#1E293B', highlight: { background: '#38BDF8', border: '#FFFFFF' } },
-      shape: n.type === 'service' ? 'box' : n.type === 'endpoint' ? 'diamond' : 'dot',
-      size: n.type === 'service' ? 24 : n.type === 'module' ? 18 : 12,
-      font: { color: '#F1F5F9', size: 12 }
-    }));
-    const visEdges = graphData.edges.map(e => ({
+    // Role Palette & Vis Nodes Construction
+    const roleColors = {
+      service: '#4F46E5',    // Indigo (Subsystems)
+      module: '#0284C7',     // Sky Blue (Modules)
+      endpoint: '#D97706',   // Amber (APIs / Exports)
+      function: '#059669'    // Emerald (Internal Functions)
+    };
+
+    const visNodesRaw = graphData.nodes.map(n => {
+      const isBox = n.type === 'service' || n.type === 'module';
+      const isEndpoint = n.type === 'endpoint';
+      return {
+        id: n.id,
+        label: n.name,
+        title: n.name + '\\nType: ' + n.type + '\\nSummary: ' + (n.summary || ''),
+        color: {
+          background: roleColors[n.type] || '#475569',
+          border: isBox ? '#93C5FD' : '#334155',
+          highlight: { background: '#38BDF8', border: '#FFFFFF' },
+          hover: { background: '#60A5FA', border: '#FFFFFF' }
+        },
+        shape: isBox ? 'box' : (isEndpoint ? 'box' : 'dot'),
+        margin: isBox ? 10 : 6,
+        size: n.type === 'service' ? 26 : (n.type === 'module' ? 20 : 14),
+        font: {
+          color: '#FFFFFF',
+          size: isBox ? 14 : (isEndpoint ? 12 : 11),
+          face: 'ui-sans-serif, system-ui, sans-serif',
+          strokeWidth: 2,
+          strokeColor: '#0B0F17'
+        },
+        borderWidth: 2,
+        shadow: { enabled: true, color: 'rgba(0,0,0,0.6)', size: 6, x: 2, y: 2 },
+        nodeType: n.type,
+        layer: (n.tags && n.tags[0]) || 'general'
+      };
+    });
+
+    const visEdgesRaw = graphData.edges.map(e => ({
+      id: e.source + '->' + e.target,
       from: e.source,
       to: e.target,
-      arrows: e.direction === 'forward' ? 'to' : undefined,
-      color: { color: '#334155', highlight: '#38BDF8' },
+      arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+      color: { color: '#334155', highlight: '#38BDF8', hover: '#60A5FA' },
+      width: 1.5,
       smooth: { type: 'continuous' }
     }));
 
-    const network = new vis.Network(document.getElementById('network'), { nodes: new vis.DataSet(visNodes), edges: new vis.DataSet(visEdges) }, {
-      physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -40, centralGravity: 0.01, springLength: 90 }, stabilization: { iterations: 100 } }
+    const nodesDataSet = new vis.DataSet(visNodesRaw);
+    const edgesDataSet = new vis.DataSet(visEdgesRaw);
+
+    let currentFilter = 'all';
+    let selectedLayer = 'all';
+
+    const nodesView = new vis.DataView(nodesDataSet, {
+      filter: function(item) {
+        if (selectedLayer !== 'all') {
+          // Check if item belongs to this layer
+          const layerObj = graphData.layers.find(l => l.id === selectedLayer);
+          if (layerObj && !layerObj.nodeIds.includes(item.id)) {
+            return false;
+          }
+        }
+        if (currentFilter === 'architecture') {
+          return item.nodeType === 'service' || item.nodeType === 'module';
+        }
+        if (currentFilter === 'services') {
+          return item.nodeType === 'service' || item.nodeType === 'module' || item.nodeType === 'endpoint';
+        }
+        return true;
+      }
     });
+
+    const networkContainer = document.getElementById('network');
+    const networkData = { nodes: nodesView, edges: edgesDataSet };
+    const networkOptions = {
+      physics: {
+        solver: 'barnesHut',
+        barnesHut: {
+          gravitationalConstant: -3500,
+          centralGravity: 0.3,
+          springLength: 120,
+          springConstant: 0.04,
+          damping: 0.09,
+          avoidOverlap: 0.5
+        },
+        stabilization: {
+          enabled: true,
+          iterations: 120
+        }
+      },
+      interaction: {
+        hover: true,
+        navigationButtons: true,
+        keyboard: true,
+        zoomView: true
+      }
+    };
+
+    const network = new vis.Network(networkContainer, networkData, networkOptions);
+
+    network.once('stabilizationIterationsDone', function() {
+      network.fit({ animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
+    });
+
+    // Auto-fit fallbacks
+    setTimeout(() => { network.fit(); }, 200);
+    setTimeout(() => { network.fit(); }, 800);
+    window.addEventListener('resize', () => { network.fit(); });
+
+    // Filter Handlers
+    function setGraphFilter(filter) {
+      currentFilter = filter;
+      ['arch', 'services', 'all'].forEach(f => {
+        const btn = document.getElementById('filter-' + f + '-btn');
+        if (f === filter) {
+          btn.className = 'px-3 py-1 rounded-lg font-medium bg-cyan-600 text-white transition';
+        } else {
+          btn.className = 'px-3 py-1 rounded-lg font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition';
+        }
+      });
+      nodesView.refresh();
+      setTimeout(() => { network.fit({ animation: { duration: 300 } }); }, 150);
+    }
+
+    function filterByLayer(layerId) {
+      selectedLayer = layerId;
+      document.getElementById('layer-filter-select').value = layerId;
+      nodesView.refresh();
+      setTimeout(() => { network.fit({ animation: { duration: 300 } }); }, 150);
+    }
+
+    function searchGraph(query) {
+      const q = query.trim().toLowerCase();
+      if (!q) {
+        network.fit({ animation: true });
+        return;
+      }
+      const match = graphData.nodes.find(n => n.name.toLowerCase().includes(q) || n.id.toLowerCase().includes(q));
+      if (match) {
+        network.focus(match.id, { scale: 1.4, animation: true });
+        selectNodeById(match.id);
+      }
+    }
+
+    function selectNodeById(nodeId) {
+      const node = graphData.nodes.find(n => n.id === nodeId);
+      if (node) {
+        document.getElementById('inspect-name').innerText = node.name;
+        document.getElementById('inspect-summary').innerText = node.summary || 'No summary available.';
+        const metaSec = document.getElementById('inspect-meta-section');
+        if (node.binaryMeta) {
+          metaSec.classList.remove('hidden');
+          document.getElementById('meta-addr').innerText = node.binaryMeta.address || 'N/A';
+          document.getElementById('meta-role').innerText = node.binaryMeta.role || 'general';
+
+          const irSym = irData.symbols ? irData.symbols.find(s => s.id === node.id || s.address === node.binaryMeta.address) : null;
+          if (irSym) {
+            document.getElementById('meta-callers').innerText = (irSym.callers || []).length;
+            document.getElementById('meta-callees').innerText = (irSym.callees || []).length;
+            const instBox = document.getElementById('inspect-instructions');
+            if (irSym.instructions && irSym.instructions.length > 0) {
+              instBox.innerHTML = irSym.instructions.map(i => '<div class="flex gap-2"><span class="text-gray-500">' + i.address + '</span><span class="text-cyan-400 font-bold">' + i.mnemonic + '</span><span class="text-gray-300">' + i.operands + (i.symbolStub ? ' (' + i.symbolStub + ')' : '') + '</span></div>').join('');
+            } else {
+              instBox.innerText = node.binaryMeta.pseudoCode || '// No instruction disassembly recorded';
+            }
+          }
+        } else {
+          metaSec.classList.add('hidden');
+        }
+      }
+    }
 
     network.on('click', function(params) {
       if (params.nodes.length > 0) {
-        const nodeId = params.nodes[0];
-        const node = graphData.nodes.find(n => n.id === nodeId);
-        if (node) {
-          document.getElementById('inspect-name').innerText = node.name;
-          document.getElementById('inspect-summary').innerText = node.summary;
-          const metaSec = document.getElementById('inspect-meta-section');
-          if (node.binaryMeta) {
-            metaSec.classList.remove('hidden');
-            document.getElementById('meta-addr').innerText = node.binaryMeta.address || 'N/A';
-            document.getElementById('meta-role').innerText = node.binaryMeta.role || 'general';
-
-            // Find matching IR symbol for full instruction stream
-            const irSym = irData.symbols ? irData.symbols.find(s => s.id === node.id || s.address === node.binaryMeta.address) : null;
-            if (irSym) {
-              document.getElementById('meta-callers').innerText = irSym.callers.length;
-              document.getElementById('meta-callees').innerText = irSym.callees.length;
-              const instBox = document.getElementById('inspect-instructions');
-              if (irSym.instructions && irSym.instructions.length > 0) {
-                instBox.innerHTML = irSym.instructions.map(i => '<div class="flex gap-2"><span class="text-gray-500">' + i.address + '</span><span class="text-cyan-400 font-bold">' + i.mnemonic + '</span><span class="text-gray-300">' + i.operands + (i.symbolStub ? ' (' + i.symbolStub + ')' : '') + '</span></div>').join('');
-              } else {
-                instBox.innerText = node.binaryMeta.pseudoCode || '// No instruction disassembly recorded';
-              }
-            }
-          } else {
-            metaSec.classList.add('hidden');
-          }
-        }
+        selectNodeById(params.nodes[0]);
       }
     });
 
@@ -390,6 +691,9 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       });
       document.getElementById(tab + '-view').classList.remove('hidden');
       document.getElementById('tab-btn-' + tab).className = 'px-3 py-1 rounded bg-cyan-600 text-white transition';
+      if (tab === 'graph') {
+        setTimeout(() => { network.fit(); }, 100);
+      }
     }
 
     async function runCallPathSearch() {
@@ -412,6 +716,142 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       }
     }
 
+    // ==========================================
+    // In-Browser LLM Configuration & Chat Engine
+    // ==========================================
+    function getStoredLlmConfig() {
+      try {
+        return JSON.parse(localStorage.getItem('ub_llm_config') || 'null');
+      } catch {
+        return null;
+      }
+    }
+
+    function updateLlmBadge() {
+      const cfg = getStoredLlmConfig();
+      const dot = document.getElementById('llm-status-dot');
+      const text = document.getElementById('llm-status-text');
+      const chatBadge = document.getElementById('chat-provider-badge');
+
+      if (cfg && cfg.apiKey) {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50';
+        text.innerText = cfg.provider.toUpperCase() + ' (Active)';
+        chatBadge.className = 'font-mono text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800';
+        chatBadge.innerText = cfg.provider.toUpperCase() + ': ' + (cfg.model || 'default');
+      } else if (cfg && cfg.provider === 'ollama') {
+        dot.className = 'w-2 h-2 rounded-full bg-blue-400';
+        text.innerText = 'Ollama (Local)';
+        chatBadge.className = 'font-mono text-[10px] px-2 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-800';
+        chatBadge.innerText = 'Ollama: ' + (cfg.model || 'llama3.2');
+      } else {
+        dot.className = 'w-2 h-2 rounded-full bg-gray-500';
+        text.innerText = 'Offline LLM';
+        chatBadge.className = 'font-mono text-[10px] px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700';
+        chatBadge.innerText = 'Offline Deterministic';
+      }
+    }
+
+    function openLlmModal() {
+      const cfg = getStoredLlmConfig() || { provider: 'gemini', apiKey: '', model: 'gemini-1.5-flash', baseUrl: 'http://localhost:11434' };
+      document.getElementById('modal-llm-provider').value = cfg.provider || 'gemini';
+      document.getElementById('modal-llm-key').value = cfg.apiKey || '';
+      document.getElementById('modal-llm-model').value = cfg.model || '';
+      document.getElementById('modal-llm-url').value = cfg.baseUrl || 'http://localhost:11434';
+      document.getElementById('modal-test-status').classList.add('hidden');
+      onLlmProviderChange();
+      document.getElementById('llm-modal').classList.remove('hidden');
+    }
+
+    function closeLlmModal() {
+      document.getElementById('llm-modal').classList.add('hidden');
+    }
+
+    function onLlmProviderChange() {
+      const prov = document.getElementById('modal-llm-provider').value;
+      const keyGroup = document.getElementById('modal-apikey-group');
+      const urlGroup = document.getElementById('modal-baseurl-group');
+      const modelInput = document.getElementById('modal-llm-model');
+
+      if (prov === 'ollama') {
+        keyGroup.classList.add('hidden');
+        urlGroup.classList.remove('hidden');
+        if (!modelInput.value || modelInput.value.includes('gemini') || modelInput.value.includes('claude') || modelInput.value.includes('gpt')) {
+          modelInput.value = 'llama3.2';
+        }
+      } else {
+        keyGroup.classList.remove('hidden');
+        urlGroup.classList.add('hidden');
+        if (prov === 'gemini') {
+          if (!modelInput.value || modelInput.value === 'llama3.2' || modelInput.value.includes('claude') || modelInput.value.includes('gpt')) {
+            modelInput.value = 'gemini-1.5-flash';
+          }
+        } else if (prov === 'claude') {
+          if (!modelInput.value || modelInput.value.includes('gemini') || modelInput.value.includes('llama') || modelInput.value.includes('gpt')) {
+            modelInput.value = 'claude-3-5-sonnet-20241022';
+          }
+        } else if (prov === 'openai') {
+          if (!modelInput.value || modelInput.value.includes('gemini') || modelInput.value.includes('claude') || modelInput.value.includes('llama')) {
+            modelInput.value = 'gpt-4o-mini';
+          }
+        }
+      }
+    }
+
+    function toggleKeyVisibility() {
+      const input = document.getElementById('modal-llm-key');
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    function saveLlmConfig() {
+      const prov = document.getElementById('modal-llm-provider').value;
+      const key = document.getElementById('modal-llm-key').value.trim();
+      const model = document.getElementById('modal-llm-model').value.trim();
+      const url = document.getElementById('modal-llm-url').value.trim();
+
+      const config = { provider: prov, apiKey: key, model: model, baseUrl: url };
+      localStorage.setItem('ub_llm_config', JSON.stringify(config));
+      updateLlmBadge();
+      closeLlmModal();
+    }
+
+    function clearLlmConfig() {
+      localStorage.removeItem('ub_llm_config');
+      document.getElementById('modal-llm-key').value = '';
+      updateLlmBadge();
+      closeLlmModal();
+    }
+
+    async function testLlmConnection() {
+      const prov = document.getElementById('modal-llm-provider').value;
+      const key = document.getElementById('modal-llm-key').value.trim();
+      const model = document.getElementById('modal-llm-model').value.trim();
+      const url = document.getElementById('modal-llm-url').value.trim();
+      const statusBox = document.getElementById('modal-test-status');
+
+      statusBox.classList.remove('hidden');
+      statusBox.className = 'p-2.5 rounded-lg text-xs font-mono bg-gray-800 text-cyan-400 animate-pulse';
+      statusBox.innerText = 'Testing connection to ' + prov + '...';
+
+      try {
+        const res = await fetch('/api/test-llm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: prov, apiKey: key, model: model, baseUrl: url })
+        });
+        const data = await res.json();
+        if (data.success) {
+          statusBox.className = 'p-2.5 rounded-lg text-xs font-mono bg-emerald-950/80 border border-emerald-800 text-emerald-300';
+          statusBox.innerText = '✓ Connection successful: ' + data.message + (data.snippet ? ' ("' + data.snippet + '")' : '');
+        } else {
+          statusBox.className = 'p-2.5 rounded-lg text-xs font-mono bg-red-950/80 border border-red-800 text-red-300';
+          statusBox.innerText = '✗ Connection failed: ' + data.error;
+        }
+      } catch (e) {
+        statusBox.className = 'p-2.5 rounded-lg text-xs font-mono bg-red-950/80 border border-red-800 text-red-300';
+        statusBox.innerText = '✗ Network error: ' + e.message;
+      }
+    }
+
     async function sendChatMessage() {
       const input = document.getElementById('chat-input');
       const q = input.value.trim();
@@ -430,11 +870,13 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       box.appendChild(botMsg);
       box.scrollTop = box.scrollHeight;
 
+      const clientConfig = getStoredLlmConfig();
+
       try {
         const res = await fetch('/api/investigate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: q })
+          body: JSON.stringify({ question: q, providerConfig: clientConfig })
         });
         const data = await res.json();
         botMsg.innerHTML = '<div class="font-bold text-white mb-1">Answer</div><p class="leading-relaxed">' + data.summary + '</p>'
@@ -445,6 +887,9 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       }
       box.scrollTop = box.scrollHeight;
     }
+
+    // Initialize Badge on load
+    updateLlmBadge();
   </script>
 </body>
 </html>`;

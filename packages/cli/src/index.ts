@@ -42,9 +42,27 @@ program
 
       const startTime = Date.now();
 
-      // Check SHA-256 cache
-      const fileBuffer = fs.readFileSync(targetPath);
-      const sha256 = (await import('node:crypto')).createHash('sha256').update(fileBuffer).digest('hex');
+      // Compute safe SHA-256 for file or directory bundle
+      let sha256 = '';
+      const stat = fs.statSync(targetPath);
+      if (stat.isDirectory()) {
+        const macosDir = path.join(targetPath, 'Contents', 'MacOS');
+        if (fs.existsSync(macosDir)) {
+          const files = fs.readdirSync(macosDir);
+          if (files.length > 0 && fs.existsSync(path.join(macosDir, files[0]))) {
+            const mainBin = path.join(macosDir, files[0]);
+            if (!fs.statSync(mainBin).isDirectory()) {
+              sha256 = (await import('node:crypto')).createHash('sha256').update(fs.readFileSync(mainBin)).digest('hex');
+            }
+          }
+        }
+        if (!sha256) {
+          sha256 = (await import('node:crypto')).createHash('sha256').update(targetPath).digest('hex');
+        }
+      } else {
+        const fileBuffer = fs.readFileSync(targetPath);
+        sha256 = (await import('node:crypto')).createHash('sha256').update(fileBuffer).digest('hex');
+      }
       const cacheFile = path.join(cacheDir, `${sha256}.json`);
 
       let knowledgeGraph: any;

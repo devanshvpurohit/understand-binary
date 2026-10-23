@@ -29,6 +29,33 @@ export function inspectBinaryFormat(filePath: string): FormatInspection {
 
   // If directory
   if (stat.isDirectory()) {
+    if (ext === '.app' || fs.existsSync(path.join(filePath, 'Contents'))) {
+      const asarPath = path.join(filePath, 'Contents', 'Resources', 'app.asar');
+      const macosDir = path.join(filePath, 'Contents', 'MacOS');
+      let arch = 'arm64';
+      let sha256 = '';
+
+      if (fs.existsSync(macosDir)) {
+        const files = fs.readdirSync(macosDir);
+        if (files.length > 0) {
+          const mainBin = path.join(macosDir, files[0]);
+          if (fs.existsSync(mainBin) && !fs.statSync(mainBin).isDirectory()) {
+            const binBuf = fs.readFileSync(mainBin);
+            sha256 = crypto.createHash('sha256').update(binBuf).digest('hex');
+          }
+        }
+      }
+
+      return {
+        format: 'macos_app',
+        architecture: fs.existsSync(asarPath) ? 'electron (macos bundle)' : arch,
+        bitness: 64,
+        endianness: 'little',
+        sha256: sha256 || crypto.createHash('sha256').update(filePath).digest('hex'),
+        fileSize: stat.size,
+      };
+    }
+
     return {
       format: fs.existsSync(path.join(filePath, 'package.json')) ? 'javascript_bundle' : 'unknown',
       architecture: 'all',

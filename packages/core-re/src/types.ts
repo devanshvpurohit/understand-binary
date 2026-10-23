@@ -5,6 +5,7 @@ export type BinaryFormat =
   | 'electron_asar'
   | 'apk'
   | 'javascript_bundle'
+  | 'macos_app'
   | 'raw_binary'
   | 'unknown';
 

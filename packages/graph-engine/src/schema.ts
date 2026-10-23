@@ -62,11 +62,15 @@ export const TourStepSchema = z.object({
   order: z.number(),
   title: z.string(),
   description: z.string(),
-  targetNodeIds: z.array(z.string()),
+  nodeIds: z.array(z.string()),
+  targetNodeIds: z.array(z.string()).optional(),
+  languageLesson: z.string().optional(),
 });
 
 export const ProjectMetaSchema = z.object({
   name: z.string(),
+  languages: z.array(z.string()).default([]),
+  frameworks: z.array(z.string()).default([]),
   description: z.string(),
   analyzedAt: z.string(),
   gitCommitHash: z.string(),
@@ -76,7 +80,7 @@ export const ProjectMetaSchema = z.object({
     arch: z.string(),
     isStripped: z.boolean(),
   }).optional(),
-});
+}).passthrough();
 
 export const KnowledgeGraphSchema = z.object({
   version: z.string(),

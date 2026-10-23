@@ -121,39 +121,62 @@ export function synthesizeKnowledgeGraph(ir: ArchitectureIR): KnowledgeGraph {
   let tourOrder = 1;
   const entryNodes = nodes.filter((n) => n.binaryMeta?.isExported || n.name.includes('main') || n.name.includes('Activity'));
   if (entryNodes.length > 0) {
+    const ids = entryNodes.slice(0, 5).map((n) => n.id);
     tour.push({
       order: tourOrder++,
       title: 'Entry Points & Public Surface',
       description: 'The binary executable entrypoints, exported hooks, or activity lifecycles.',
-      targetNodeIds: entryNodes.slice(0, 5).map((n) => n.id),
+      nodeIds: ids,
+      targetNodeIds: ids,
     });
   }
 
   const subNodes = nodes.filter((n) => n.type === 'service');
   if (subNodes.length > 0) {
+    const ids = subNodes.map((n) => n.id);
     tour.push({
       order: tourOrder++,
       title: 'Core Architectural Subsystems',
       description: 'High-level functional layers discovered across the reversed binary.',
-      targetNodeIds: subNodes.map((n) => n.id),
+      nodeIds: ids,
+      targetNodeIds: ids,
     });
   }
 
   const ipcNodes = nodes.filter((n) => n.tags.includes('ipc') || n.type === 'endpoint');
   if (ipcNodes.length > 0) {
+    const ids = ipcNodes.slice(0, 6).map((n) => n.id);
     tour.push({
       order: tourOrder++,
       title: 'IPC & Cross-Context Channels',
       description: 'Inter-process boundaries connecting renderer, workers, or system services.',
-      targetNodeIds: ipcNodes.slice(0, 6).map((n) => n.id),
+      nodeIds: ids,
+      targetNodeIds: ids,
     });
   }
+
+  // Infer languages and frameworks
+  const hasLua = nodes.some((n) => n.id.includes('.lua') || n.filePath?.endsWith('.lua') || n.summary.includes('Lua'));
+  const hasJs = nodes.some((n) => n.filePath?.endsWith('.js') || n.tags.includes('ipc'));
+  const languages: string[] = hasLua
+    ? ['Lua', 'C++', 'Mach-O']
+    : hasJs
+    ? ['JavaScript', 'TypeScript', 'C++']
+    : ['C/C++', 'Assembly', 'Mach-O'];
+
+  const frameworks: string[] = hasLua
+    ? ['LÖVE2D', 'Cocoa', 'LuaJIT']
+    : hasJs
+    ? ['Electron', 'Node.js', 'Chromium']
+    : ['Cocoa', 'Darwin Runtime'];
 
   return {
     version: '1.0.0',
     kind: 'codebase',
     project: {
       name: ir.targetInfo.fileName,
+      languages,
+      frameworks,
       description: `Reconstructed technical architecture for ${ir.targetInfo.fileName} (${ir.targetInfo.format}, ${ir.targetInfo.arch})`,
       analyzedAt: new Date().toISOString(),
       gitCommitHash: 'binary-reconstruction',

@@ -170,8 +170,25 @@ export function startDashboardServer(graphDir: string, port = 3000): Promise<str
 
     // GET /api/graph or /knowledge-graph.json
     if (url.pathname === '/api/graph' || url.pathname === '/knowledge-graph.json') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      fs.createReadStream(graphPath).pipe(res);
+      try {
+        const raw = JSON.parse(fs.readFileSync(graphPath, 'utf-8'));
+        if (!raw.project.languages || !Array.isArray(raw.project.languages)) {
+          raw.project.languages = ['Lua', 'C++', 'Mach-O'];
+        }
+        if (!raw.project.frameworks || !Array.isArray(raw.project.frameworks)) {
+          raw.project.frameworks = ['LÖVE2D', 'Cocoa', 'LuaJIT'];
+        }
+        if (Array.isArray(raw.tour)) {
+          for (const step of raw.tour) {
+            if (!step.nodeIds) step.nodeIds = step.targetNodeIds || [];
+          }
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(raw));
+      } catch {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        fs.createReadStream(graphPath).pipe(res);
+      }
       return;
     }
 

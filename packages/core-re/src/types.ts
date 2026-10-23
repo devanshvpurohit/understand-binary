@@ -8,12 +8,57 @@ export type BinaryFormat =
   | 'raw_binary'
   | 'unknown';
 
+export type ProvenanceKind = 'verified_fact' | 'heuristic_inference' | 'llm_hypothesis';
+
+export interface Instruction {
+  address: string;
+  opcodeBytes: string;
+  mnemonic: string;
+  operands: string;
+  targetAddress?: string;
+  symbolStub?: string;
+  isCall: boolean;
+  isBranch: boolean;
+  isReturn: boolean;
+}
+
+export interface BasicBlock {
+  id: string;
+  startAddress: string;
+  endAddress: string;
+  instructionsCount: number;
+  successors: string[];
+  predecessors: string[];
+}
+
+export interface Section {
+  name: string;
+  startAddress: string;
+  size: number;
+  rawOffset?: number;
+  isExecutable: boolean;
+  isWritable: boolean;
+}
+
+export interface AnalysisCoverage {
+  formatDetection: 'complete' | 'partial' | 'failed';
+  sectionExtraction: 'complete' | 'partial' | 'unavailable';
+  symbolResolution: 'complete' | 'partial' | 'stripped';
+  disassembly: 'complete' | 'partial' | 'unavailable';
+  decompilation: 'complete' | 'partial' | 'unavailable';
+  callGraph: 'complete' | 'partial' | 'unavailable';
+  stringExtraction: 'complete' | 'partial' | 'unavailable';
+  semanticAnalysis: 'complete' | 'pending' | 'unavailable';
+}
+
 export interface BinaryMetadata {
   fileName: string;
   filePath: string;
   fileSize: number;
   format: BinaryFormat;
   architecture: string;
+  bitness: 32 | 64 | 'unknown';
+  endianness: 'little' | 'big' | 'unknown';
   platform: string;
   entrypoint?: string;
   isStripped: boolean;
@@ -21,7 +66,7 @@ export interface BinaryMetadata {
   exportedSymbolsCount: number;
   functionsCount: number;
   stringsCount: number;
-  sha256?: string;
+  sha256: string;
 }
 
 export interface DisassembledFunction {
@@ -36,9 +81,11 @@ export interface DisassembledFunction {
   callers: string[];
   callees: string[];
   xrefs: string[];
+  instructions: Instruction[];
+  basicBlocks?: BasicBlock[];
   pseudoCode?: string;
-  assemblySnippet?: string[];
-  detectedRole?: string; // e.g., 'cryptography', 'network', 'auth', 'ui', 'storage', 'ipc'
+  detectedRole?: string;
+  provenance: ProvenanceKind;
 }
 
 export interface ExtractedString {
@@ -66,6 +113,7 @@ export interface ExternalAPI {
 
 export interface BinaryAnalysisResult {
   metadata: BinaryMetadata;
+  sections: Section[];
   functions: DisassembledFunction[];
   strings: ExtractedString[];
   ipcChannels: IPCChannel[];
@@ -76,11 +124,13 @@ export interface BinaryAnalysisResult {
     size?: number;
     functions: string[];
   }[];
+  coverage: AnalysisCoverage;
 }
 
 export interface AnalysisOptions {
   extractStrings?: boolean;
   maxFunctions?: number;
+  maxDisassemblyLines?: number;
   decompile?: boolean;
   deepTrace?: boolean;
 }

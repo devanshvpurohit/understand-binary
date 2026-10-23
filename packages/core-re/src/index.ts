@@ -7,6 +7,7 @@ import { analyzeAndroidTarget } from './engines/android.js';
 export * from './types.js';
 export * from './detector.js';
 export * from './strings.js';
+export * from './utils/exec.js';
 
 export async function analyzeBinaryTarget(
   targetPath: string,
@@ -27,6 +28,6 @@ export async function analyzeBinaryTarget(
     case 'pe':
     case 'raw_binary':
     default:
-      return analyzeNativeBinary(targetPath, format === 'unknown' ? 'raw_binary' : (format as any), options);
+      return analyzeNativeBinary(targetPath, options);
   }
 }

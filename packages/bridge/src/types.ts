@@ -1,3 +1,10 @@
+import type {
+  AnalysisCoverage,
+  ProvenanceKind,
+  Instruction,
+  Section,
+} from '@understand-binary/core-re';
+
 export interface SubsystemIR {
   id: string;
   name: string;
@@ -26,6 +33,8 @@ export interface SymbolIR {
   callers: string[];
   callees: string[];
   codeSnippet?: string;
+  instructions?: Instruction[];
+  provenance: ProvenanceKind;
 }
 
 export interface RelationshipIR {
@@ -34,20 +43,27 @@ export interface RelationshipIR {
   type: 'calls' | 'imports' | 'ipc_bridge' | 'data_flow' | 'contains' | 'implements';
   label?: string;
   confidence: number;
+  provenance: ProvenanceKind;
 }
 
 export interface ArchitectureIR {
   targetInfo: {
     fileName: string;
     filePath: string;
+    fileSize: number;
     format: string;
     arch: string;
+    bitness: 32 | 64 | 'unknown';
+    endianness: 'little' | 'big' | 'unknown';
     platform: string;
     isStripped: boolean;
+    sha256: string;
   };
+  sections: Section[];
   subsystems: SubsystemIR[];
   components: ComponentIR[];
   symbols: SymbolIR[];
   relationships: RelationshipIR[];
   strings: { value: string; classification: string }[];
+  coverage: AnalysisCoverage;
 }

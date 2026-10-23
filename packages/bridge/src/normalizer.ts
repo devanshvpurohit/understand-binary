@@ -14,7 +14,6 @@ export function normalizeBinaryAnalysis(result: BinaryAnalysisResult): Architect
   const symbols: SymbolIR[] = [];
   const relationships: RelationshipIR[] = [];
 
-  // Helper to ensure a subsystem exists
   const getOrCreateSubsystem = (
     id: string,
     name: string,
@@ -33,7 +32,6 @@ export function normalizeBinaryAnalysis(result: BinaryAnalysisResult): Architect
     return subsystemsMap.get(id)!;
   };
 
-  // Helper to ensure a component exists
   const getOrCreateComponent = (
     id: string,
     name: string,
@@ -58,7 +56,7 @@ export function normalizeBinaryAnalysis(result: BinaryAnalysisResult): Architect
     return componentsMap.get(id)!;
   };
 
-  // 1. Process Functions & Map to Components/Subsystems
+  // 1. Process Functions & Map to Subsystems
   for (const fn of result.functions) {
     if (isNoiseSymbol(fn.name)) continue;
 
@@ -106,6 +104,8 @@ export function normalizeBinaryAnalysis(result: BinaryAnalysisResult): Architect
       callers: fn.callers,
       callees: fn.callees,
       codeSnippet: fn.pseudoCode,
+      instructions: fn.instructions,
+      provenance: fn.provenance,
     };
     symbols.push(symbolIR);
     comp.symbolIds.push(fn.id);
@@ -114,14 +114,15 @@ export function normalizeBinaryAnalysis(result: BinaryAnalysisResult): Architect
     for (const callee of fn.callees) {
       relationships.push({
         sourceId: fn.id,
-        targetId: callee,
+        targetId: callee.startsWith('0x') || callee.startsWith('fn_') ? callee : `sym_${callee}`,
         type: 'calls',
-        confidence: 0.85,
+        confidence: 0.95,
+        provenance: 'verified_fact',
       });
     }
   }
 
-  // 2. Process IPC channels (Electron / OS IPC)
+  // 2. Process IPC channels
   if (result.ipcChannels.length > 0) {
     const ipcSub = getOrCreateSubsystem('ipc_subsystem', 'Inter-Process Communication', 'ipc', 'Bridges renderer and main execution contexts');
     for (const channel of result.ipcChannels) {
@@ -134,6 +135,7 @@ export function normalizeBinaryAnalysis(result: BinaryAnalysisResult): Architect
         type: 'ipc_bridge',
         label: channel.pattern,
         confidence: 0.95,
+        provenance: 'verified_fact',
       });
     }
   }
@@ -149,26 +151,32 @@ export function normalizeBinaryAnalysis(result: BinaryAnalysisResult): Architect
         targetId: libCompId,
         type: 'imports',
         confidence: 1.0,
+        provenance: 'verified_fact',
       });
     }
   }
 
-  // Filter out empty subsystems
   const finalSubsystems = Array.from(subsystemsMap.values()).filter((s) => s.componentIds.length > 0);
 
   return {
     targetInfo: {
       fileName: result.metadata.fileName,
       filePath: result.metadata.filePath,
+      fileSize: result.metadata.fileSize,
       format: result.metadata.format,
       arch: result.metadata.architecture,
+      bitness: result.metadata.bitness,
+      endianness: result.metadata.endianness,
       platform: result.metadata.platform,
       isStripped: result.metadata.isStripped,
+      sha256: result.metadata.sha256,
     },
+    sections: result.sections,
     subsystems: finalSubsystems,
     components: Array.from(componentsMap.values()),
     symbols,
     relationships,
     strings: result.strings.map((s) => ({ value: s.value, classification: s.classification })),
+    coverage: result.coverage,
   };
 }

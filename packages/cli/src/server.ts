@@ -414,8 +414,7 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     <div class="flex items-center gap-3">
       <input type="text" id="search-box" oninput="searchGraph(this.value)" placeholder="Search symbols, functions..." class="px-3 py-1.5 bg-gray-800/80 border border-gray-700 rounded-lg text-xs focus:outline-none focus:border-cyan-500 w-52 text-gray-200">
       <div class="flex rounded-lg bg-gray-800 p-0.5 text-xs font-medium border border-gray-700">
-        <button id="tab-btn-graph" onclick="switchMainTab('graph')" class="px-3 py-1 rounded bg-cyan-600 text-white transition">RE Graph</button>
-        <button id="tab-btn-ua" onclick="switchMainTab('ua')" class="px-3 py-1 rounded text-indigo-400 hover:text-white transition flex items-center gap-1">✨ Understand-Anything</button>
+        <button id="tab-btn-graph" onclick="switchMainTab('graph')" class="px-3 py-1 rounded bg-cyan-600 text-white transition">RE Architecture</button>
         <button id="tab-btn-path" onclick="switchMainTab('path')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">Call Path</button>
         <button id="tab-btn-sec" onclick="switchMainTab('sec')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">Findings (<span id="sec-count">0</span>)</button>
         <button id="tab-btn-chat" onclick="switchMainTab('chat')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">AI Chat</button>
@@ -424,8 +423,8 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
 
     <!-- Right Controls: Open UA in new tab + LLM Settings Trigger -->
     <div class="flex items-center gap-2.5">
-      <a href="/ua" target="_blank" class="px-2.5 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/80 text-indigo-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition" title="Open Understand-Anything Flow in a full window">
-        <span>Full UA View</span>
+      <a href="/ua" target="_blank" class="px-2.5 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/80 text-indigo-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition" title="Open Nodes Flow in a dedicated full browser window">
+        <span>Full Flow Window</span>
         <span class="text-[10px]">↗</span>
       </a>
       <button onclick="openLlmModal()" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs transition">
@@ -438,36 +437,55 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
 
   <!-- Main Workspace -->
   <div class="flex flex-1 relative overflow-hidden">
-    <!-- Network Graph View -->
-    <div id="graph-view" class="flex-1 w-full h-full relative">
-      <!-- Floating View & Layer Filter Controls -->
-      <div class="absolute top-4 left-4 z-10 flex flex-wrap items-center gap-2 bg-gray-900/90 backdrop-blur p-1.5 rounded-xl border border-gray-800 shadow-2xl text-xs">
-        <span class="text-gray-400 font-semibold px-2">View:</span>
-        <button id="filter-arch-btn" onclick="setGraphFilter('architecture')" class="px-3 py-1 rounded-lg font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition">
-          🏛️ Architecture (<span id="count-arch">0</span>)
-        </button>
-        <button id="filter-services-btn" onclick="setGraphFilter('services')" class="px-3 py-1 rounded-lg font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition">
-          ⚡ Modules & APIs (<span id="count-services">0</span>)
-        </button>
-        <button id="filter-all-btn" onclick="setGraphFilter('all')" class="px-3 py-1 rounded-lg font-medium bg-cyan-600 text-white transition">
-          🌐 All Nodes (<span id="count-all">0</span>)
-        </button>
-        <div class="h-4 w-px bg-gray-800 mx-1"></div>
-        <select id="layer-filter-select" onchange="filterByLayer(this.value)" class="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded-lg px-2 py-1 focus:outline-none">
-          <option value="all">All Subsystems</option>
-        </select>
-        <div class="h-4 w-px bg-gray-800 mx-1"></div>
-        <button onclick="network.fit({ animation: { duration: 400 } })" class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-cyan-400 rounded-lg text-xs font-medium border border-gray-700" title="Fit All Nodes in View">
-          ⛶ Fit View
-        </button>
+    <!-- Network & Flow Graph View -->
+    <div id="graph-view" class="flex-1 w-full h-full relative flex">
+      <div class="flex-1 h-full relative overflow-hidden">
+        <!-- Floating View & Mode Switcher -->
+        <div class="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 bg-gray-900/90 backdrop-blur p-1.5 rounded-xl border border-gray-800 shadow-2xl text-xs">
+          <!-- Flow vs Physics Mode Switcher -->
+          <div class="flex rounded-lg bg-gray-800 p-0.5 border border-gray-700">
+            <button id="mode-flow-btn" onclick="setGraphMode('flow')" class="px-3 py-1 rounded-md font-semibold bg-cyan-600 text-white transition flex items-center gap-1.5 shadow-sm">
+              <span>⚡ Nodes Flow</span>
+            </button>
+            <button id="mode-physics-btn" onclick="setGraphMode('physics')" class="px-3 py-1 rounded-md font-medium text-gray-400 hover:text-white transition flex items-center gap-1.5">
+              <span>🌐 Force Graph</span>
+            </button>
+          </div>
+
+          <div class="h-4 w-px bg-gray-800 mx-1"></div>
+
+          <div id="physics-filters" class="hidden flex items-center gap-2">
+            <span class="text-gray-400 font-semibold px-1">Filter:</span>
+            <button id="filter-arch-btn" onclick="setGraphFilter('architecture')" class="px-2.5 py-1 rounded-lg font-medium bg-cyan-600 text-white transition">
+              🏛️ Architecture (<span id="count-arch">0</span>)
+            </button>
+            <button id="filter-services-btn" onclick="setGraphFilter('services')" class="px-2.5 py-1 rounded-lg font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition">
+              ⚡ Modules (<span id="count-services">0</span>)
+            </button>
+            <button id="filter-all-btn" onclick="setGraphFilter('all')" class="px-2.5 py-1 rounded-lg font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition">
+              🌐 All (<span id="count-all">0</span>)
+            </button>
+            <div class="h-4 w-px bg-gray-800 mx-1"></div>
+            <select id="layer-filter-select" onchange="filterByLayer(this.value)" class="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded-lg px-2 py-1 focus:outline-none">
+              <option value="all">All Subsystems</option>
+            </select>
+            <div class="h-4 w-px bg-gray-800 mx-1"></div>
+            <button onclick="if(network) network.fit({ animation: { duration: 400 } })" class="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-cyan-400 rounded-lg text-xs font-medium border border-gray-700" title="Fit All Nodes in View">
+              ⛶ Fit View
+            </button>
+          </div>
+        </div>
+
+        <!-- Mode 1: React Flow (Understand-Anything) Embed (Default & Interactive) -->
+        <div id="flow-container" class="absolute inset-0 w-full h-full">
+          <iframe src="/ua?token=ub-open-access" class="w-full h-full border-0" id="flow-iframe"></iframe>
+        </div>
+
+        <!-- Mode 2: Force-directed Physics Canvas -->
+        <div id="physics-container" class="absolute inset-0 w-full h-full hidden">
+          <div id="network" class="w-full h-full"></div>
+        </div>
       </div>
-
-      <div id="network"></div>
-    </div>
-
-    <!-- Understand-Anything Embedded View (Zero token/key required) -->
-    <div id="ua-view" class="hidden flex-1 w-full h-full relative bg-gray-950">
-      <iframe src="/ua?token=ub-open-access" class="w-full h-full border-0" id="ua-iframe"></iframe>
     </div>
 
     <!-- Call Path Explorer View -->
@@ -643,7 +661,7 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     }
     document.getElementById('sec-count').innerText = findingsData.length;
 
-    // Populate Layers & Layer Filter Select
+    // Populate Layers
     const layersList = document.getElementById('layers-list');
     const layerSelect = document.getElementById('layer-filter-select');
     graphData.layers.forEach(layer => {
@@ -693,12 +711,19 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       function: '#059669'    // Emerald (Internal Functions)
     };
 
-    const visNodesRaw = graphData.nodes.map(n => {
+    // Pre-position nodes initially so physics runs smoothly without exploding
+    const visNodesRaw = graphData.nodes.map((n, idx) => {
       const isBox = n.type === 'service' || n.type === 'module';
       const isEndpoint = n.type === 'endpoint';
+      const angle = (idx / Math.max(1, graphData.nodes.length)) * 2 * Math.PI;
+      const radius = n.type === 'service' ? 120 : (n.type === 'module' ? 300 : 550);
+      const x = Math.round(Math.cos(angle) * radius + (Math.random() - 0.5) * 40);
+      const y = Math.round(Math.sin(angle) * radius + (Math.random() - 0.5) * 40);
       return {
         id: n.id,
         label: n.name,
+        x: x,
+        y: y,
         title: n.name + '\\nType: ' + n.type + '\\nSummary: ' + (n.summary || ''),
         color: {
           background: roleColors[n.type] || '#475569',
@@ -736,7 +761,7 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     const nodesDataSet = new vis.DataSet(visNodesRaw);
     const edgesDataSet = new vis.DataSet(visEdgesRaw);
 
-    let currentFilter = 'all';
+    let currentFilter = 'architecture';
     let selectedLayer = 'all';
 
     const nodesView = new vis.DataView(nodesDataSet, {
@@ -757,22 +782,32 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       }
     });
 
+    // Safely filter edges so no dangling edge exists in the view!
+    const edgesView = new vis.DataView(edgesDataSet, {
+      filter: function(edge) {
+        const fromNode = nodesView.get(edge.from);
+        const toNode = nodesView.get(edge.to);
+        return !!(fromNode && toNode);
+      }
+    });
+
     const networkContainer = document.getElementById('network');
-    const networkData = { nodes: nodesView, edges: edgesDataSet };
+    const networkData = { nodes: nodesView, edges: edgesView };
     const networkOptions = {
       physics: {
-        solver: 'barnesHut',
-        barnesHut: {
-          gravitationalConstant: -3500,
-          centralGravity: 0.3,
-          springLength: 120,
-          springConstant: 0.04,
-          damping: 0.09,
-          avoidOverlap: 0.5
+        solver: 'forceAtlas2Based',
+        forceAtlas2Based: {
+          gravitationalConstant: -70,
+          centralGravity: 0.03,
+          springLength: 100,
+          springConstant: 0.06,
+          damping: 0.35,
+          avoidOverlap: 0.8
         },
         stabilization: {
           enabled: true,
-          iterations: 120
+          iterations: 60,
+          updateInterval: 10
         }
       },
       interaction: {
@@ -783,47 +818,87 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       }
     };
 
-    const network = new vis.Network(networkContainer, networkData, networkOptions);
+    let network = null;
+    function initPhysicsNetwork() {
+      if (!network && networkContainer) {
+        network = new vis.Network(networkContainer, networkData, networkOptions);
+        network.on('click', function(params) {
+          if (params.nodes.length > 0) {
+            selectNodeById(params.nodes[0]);
+          }
+        });
+        setTimeout(() => { if (network) network.fit(); }, 200);
+      }
+    }
 
-    network.once('stabilizationIterationsDone', function() {
-      network.fit({ animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
-    });
+    // Graph Mode Switcher: Flow (React Flow) vs Physics (Vis.js)
+    function setGraphMode(mode) {
+      const flowContainer = document.getElementById('flow-container');
+      const physicsContainer = document.getElementById('physics-container');
+      const physicsFilters = document.getElementById('physics-filters');
+      const flowBtn = document.getElementById('mode-flow-btn');
+      const physicsBtn = document.getElementById('mode-physics-btn');
 
-    setTimeout(() => { network.fit(); }, 200);
-    setTimeout(() => { network.fit(); }, 800);
-    window.addEventListener('resize', () => { network.fit(); });
+      if (mode === 'flow') {
+        flowContainer.classList.remove('hidden');
+        physicsContainer.classList.add('hidden');
+        physicsFilters.classList.add('hidden');
+        flowBtn.className = 'px-3 py-1 rounded-md font-semibold bg-cyan-600 text-white transition flex items-center gap-1.5 shadow-sm';
+        physicsBtn.className = 'px-3 py-1 rounded-md font-medium text-gray-400 hover:text-white transition flex items-center gap-1.5';
+      } else {
+        flowContainer.classList.add('hidden');
+        physicsContainer.classList.remove('hidden');
+        physicsFilters.classList.remove('hidden');
+        physicsBtn.className = 'px-3 py-1 rounded-md font-semibold bg-cyan-600 text-white transition flex items-center gap-1.5 shadow-sm';
+        flowBtn.className = 'px-3 py-1 rounded-md font-medium text-gray-400 hover:text-white transition flex items-center gap-1.5';
+        initPhysicsNetwork();
+        nodesView.refresh();
+        edgesView.refresh();
+        setTimeout(() => { if (network) network.fit({ animation: { duration: 300 } }); }, 100);
+      }
+    }
 
     // Filter Handlers
     function setGraphFilter(filter) {
       currentFilter = filter;
       ['arch', 'services', 'all'].forEach(f => {
         const btn = document.getElementById('filter-' + f + '-btn');
-        if (f === filter) {
-          btn.className = 'px-3 py-1 rounded-lg font-medium bg-cyan-600 text-white transition';
-        } else {
-          btn.className = 'px-3 py-1 rounded-lg font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition';
+        if (btn) {
+          if (f === filter) {
+            btn.className = 'px-2.5 py-1 rounded-lg font-medium bg-cyan-600 text-white transition';
+          } else {
+            btn.className = 'px-2.5 py-1 rounded-lg font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition';
+          }
         }
       });
       nodesView.refresh();
-      setTimeout(() => { network.fit({ animation: { duration: 300 } }); }, 150);
+      edgesView.refresh();
+      if (network) {
+        setTimeout(() => { network.fit({ animation: { duration: 300 } }); }, 100);
+      }
     }
 
     function filterByLayer(layerId) {
       selectedLayer = layerId;
       document.getElementById('layer-filter-select').value = layerId;
       nodesView.refresh();
-      setTimeout(() => { network.fit({ animation: { duration: 300 } }); }, 150);
+      edgesView.refresh();
+      if (network) {
+        setTimeout(() => { network.fit({ animation: { duration: 300 } }); }, 100);
+      }
     }
 
     function searchGraph(query) {
       const q = query.trim().toLowerCase();
       if (!q) {
-        network.fit({ animation: true });
+        if (network) network.fit({ animation: true });
         return;
       }
       const match = graphData.nodes.find(n => n.name.toLowerCase().includes(q) || n.id.toLowerCase().includes(q));
       if (match) {
-        network.focus(match.id, { scale: 1.4, animation: true });
+        if (network) {
+          network.focus(match.id, { scale: 1.4, animation: true });
+        }
         selectNodeById(match.id);
       }
     }
@@ -856,14 +931,8 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       }
     }
 
-    network.on('click', function(params) {
-      if (params.nodes.length > 0) {
-        selectNodeById(params.nodes[0]);
-      }
-    });
-
     function switchMainTab(tab) {
-      ['graph', 'ua', 'path', 'sec', 'chat'].forEach(t => {
+      ['graph', 'path', 'sec', 'chat'].forEach(t => {
         const el = document.getElementById(t + '-view');
         const btn = document.getElementById('tab-btn-' + t);
         if (el) el.classList.add('hidden');
@@ -873,16 +942,6 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       const activeBtn = document.getElementById('tab-btn-' + tab);
       if (activeEl) activeEl.classList.remove('hidden');
       if (activeBtn) activeBtn.className = 'px-3 py-1 rounded bg-cyan-600 text-white transition';
-      if (tab === 'graph') {
-        setTimeout(() => { network.fit(); }, 100);
-      }
-      if (tab === 'ua') {
-        const iframe = document.getElementById('ua-iframe');
-        if (iframe && (!iframe.dataset.loaded || iframe.dataset.loaded === 'false')) {
-          iframe.src = '/ua?token=ub-open-access&t=' + Date.now();
-          iframe.dataset.loaded = 'true';
-        }
-      }
     }
 
     async function runCallPathSearch() {

@@ -20,6 +20,12 @@ export interface ClientProviderConfig {
   baseUrl?: string;
 }
 
+export interface ModelInfo {
+  id: string;
+  name: string;
+  description?: string;
+}
+
 export function createCustomProvider(config?: ClientProviderConfig): LLMProvider | null {
   if (!config || !config.provider) return null;
   const p = config.provider.toLowerCase();
@@ -33,6 +39,96 @@ export function createCustomProvider(config?: ClientProviderConfig): LLMProvider
     return new OllamaProvider(config.baseUrl || 'http://localhost:11434', config.model || 'llama3.2');
   }
   return null;
+}
+
+export async function fetchProviderModels(config: ClientProviderConfig): Promise<ModelInfo[]> {
+  const p = (config.provider || '').toLowerCase();
+  if (p === 'gemini') {
+    if (!config.apiKey) throw new Error('API key is required to list Gemini models');
+    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${config.apiKey}`);
+    if (!resp.ok) {
+      const errText = await resp.text();
+      let msg = errText;
+      try {
+        const j = JSON.parse(errText);
+        msg = j.error?.message || errText;
+      } catch {}
+      throw new Error(`Gemini API error: ${msg}`);
+    }
+    const data: any = await resp.json();
+    const list: ModelInfo[] = (data.models || [])
+      .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+      .map((m: any) => ({
+        id: m.name.replace(/^models\//, ''),
+        name: m.displayName || m.name.replace(/^models\//, ''),
+        description: m.description,
+      }));
+    return list.sort((a, b) => {
+      const aF = a.id.includes('flash');
+      const bF = b.id.includes('flash');
+      if (aF && !bF) return -1;
+      if (!aF && bF) return 1;
+      return a.id.localeCompare(b.id);
+    });
+  } else if (p === 'openai') {
+    if (!config.apiKey) throw new Error('API key is required to list OpenAI models');
+    const resp = await fetch('https://api.openai.com/v1/models', {
+      headers: { Authorization: `Bearer ${config.apiKey}` },
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      let msg = errText;
+      try {
+        const j = JSON.parse(errText);
+        msg = j.error?.message || errText;
+      } catch {}
+      throw new Error(`OpenAI API error: ${msg}`);
+    }
+    const data: any = await resp.json();
+    const list: ModelInfo[] = (data.data || [])
+      .filter((m: any) => m.id.startsWith('gpt-') || m.id.startsWith('o1') || m.id.startsWith('o3') || m.id.startsWith('chatgpt'))
+      .map((m: any) => ({
+        id: m.id,
+        name: m.id,
+      }));
+    return list.sort((a, b) => a.id.localeCompare(b.id));
+  } else if (p === 'claude') {
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/models', {
+        headers: {
+          'x-api-key': config.apiKey || '',
+          'anthropic-version': '2023-06-01',
+        },
+      });
+      if (resp.ok) {
+        const data: any = await resp.json();
+        if (data.data && Array.isArray(data.data)) {
+          return data.data.map((m: any) => ({
+            id: m.id,
+            name: m.display_name || m.id,
+          }));
+        }
+      }
+    } catch {}
+    return [
+      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet (Latest)' },
+      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
+      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus' },
+    ];
+  } else if (p === 'ollama') {
+    const base = config.baseUrl || 'http://localhost:11434';
+    const resp = await fetch(`${base}/api/tags`);
+    if (!resp.ok) {
+      throw new Error(`Ollama connection error (${resp.status}): ${await resp.text()}`);
+    }
+    const data: any = await resp.json();
+    return (data.models || []).map((m: any) => ({
+      id: m.name,
+      name: m.name,
+      description: m.size ? `${(m.size / (1024 * 1024 * 1024)).toFixed(1)} GB` : undefined,
+    }));
+  }
+  return [];
 }
 
 export function startDashboardServer(graphDir: string, port = 3000): Promise<string> {
@@ -72,8 +168,8 @@ export function startDashboardServer(graphDir: string, port = 3000): Promise<str
 
     const url = new URL(req.url || '/', `http://localhost:${port}`);
 
-    // GET /api/graph
-    if (url.pathname === '/api/graph') {
+    // GET /api/graph or /knowledge-graph.json
+    if (url.pathname === '/api/graph' || url.pathname === '/knowledge-graph.json') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       fs.createReadStream(graphPath).pipe(res);
       return;
@@ -116,6 +212,24 @@ export function startDashboardServer(graphDir: string, port = 3000): Promise<str
       const pathResult = tools.findCallPath(source, target);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(pathResult, null, 2));
+      return;
+    }
+
+    // POST /api/models (Fetch available models using user's API key)
+    if (url.pathname === '/api/models' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', async () => {
+        try {
+          const config = JSON.parse(body);
+          const models = await fetchProviderModels(config);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, models }));
+        } catch (err: any) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: err.message, models: [] }));
+        }
+      });
       return;
     }
 
@@ -187,16 +301,26 @@ export function startDashboardServer(graphDir: string, port = 3000): Promise<str
       return;
     }
 
-    // Serve static assets from packages/dashboard/dist if present
+    // Serve static assets from packages/dashboard/dist (Understand-Anything bundle)
     const dashboardDist = path.resolve(import.meta.dirname, '../../dashboard/dist');
-    if (url.pathname.startsWith('/assets/') && fs.existsSync(dashboardDist)) {
+    if ((url.pathname.startsWith('/assets/') || url.pathname === '/favicon.ico' || url.pathname === '/favicon.svg') && fs.existsSync(dashboardDist)) {
       const assetPath = path.join(dashboardDist, url.pathname);
       if (fs.existsSync(assetPath)) {
         const ext = path.extname(assetPath);
         const contentType =
-          ext === '.js' ? 'application/javascript' : ext === '.css' ? 'text/css' : 'application/octet-stream';
+          ext === '.js' ? 'application/javascript' : ext === '.css' ? 'text/css' : ext === '.svg' ? 'image/svg+xml' : 'application/octet-stream';
         res.writeHead(200, { 'Content-Type': contentType });
         fs.createReadStream(assetPath).pipe(res);
+        return;
+      }
+    }
+
+    // GET /ua - Direct Understand-Anything React Flow dashboard
+    if (url.pathname === '/ua' || url.pathname === '/understand-anything') {
+      const uaIndex = path.join(dashboardDist, 'index.html');
+      if (fs.existsSync(uaIndex)) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        fs.createReadStream(uaIndex).pipe(res);
         return;
       }
     }
@@ -254,17 +378,22 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
 
     <!-- Center Navigation Tabs -->
     <div class="flex items-center gap-3">
-      <input type="text" id="search-box" oninput="searchGraph(this.value)" placeholder="Search symbols, functions..." class="px-3 py-1.5 bg-gray-800/80 border border-gray-700 rounded-lg text-xs focus:outline-none focus:border-cyan-500 w-56 text-gray-200">
+      <input type="text" id="search-box" oninput="searchGraph(this.value)" placeholder="Search symbols, functions..." class="px-3 py-1.5 bg-gray-800/80 border border-gray-700 rounded-lg text-xs focus:outline-none focus:border-cyan-500 w-52 text-gray-200">
       <div class="flex rounded-lg bg-gray-800 p-0.5 text-xs font-medium border border-gray-700">
-        <button id="tab-btn-graph" onclick="switchMainTab('graph')" class="px-3 py-1 rounded bg-cyan-600 text-white transition">Graph</button>
+        <button id="tab-btn-graph" onclick="switchMainTab('graph')" class="px-3 py-1 rounded bg-cyan-600 text-white transition">RE Graph</button>
+        <button id="tab-btn-ua" onclick="switchMainTab('ua')" class="px-3 py-1 rounded text-indigo-400 hover:text-white transition flex items-center gap-1">✨ Understand-Anything</button>
         <button id="tab-btn-path" onclick="switchMainTab('path')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">Call Path</button>
         <button id="tab-btn-sec" onclick="switchMainTab('sec')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">Findings (<span id="sec-count">0</span>)</button>
         <button id="tab-btn-chat" onclick="switchMainTab('chat')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">AI Chat</button>
       </div>
     </div>
 
-    <!-- Right Controls: LLM Settings Modal Trigger & Status -->
-    <div class="flex items-center gap-3">
+    <!-- Right Controls: Open UA in new tab + LLM Settings Trigger -->
+    <div class="flex items-center gap-2.5">
+      <a href="/ua" target="_blank" class="px-2.5 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/80 text-indigo-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition" title="Open Understand-Anything Flow in a full window">
+        <span>Full UA View</span>
+        <span class="text-[10px]">↗</span>
+      </a>
       <button onclick="openLlmModal()" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs transition">
         <span id="llm-status-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
         <span id="llm-status-text" class="text-gray-300 font-medium">LLM Config</span>
@@ -300,6 +429,11 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       </div>
 
       <div id="network"></div>
+    </div>
+
+    <!-- Understand-Anything Embedded View -->
+    <div id="ua-view" class="hidden flex-1 w-full h-full relative bg-gray-950">
+      <iframe src="/ua" class="w-full h-full border-0" id="ua-iframe"></iframe>
     </div>
 
     <!-- Call Path Explorer View -->
@@ -387,7 +521,7 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
 
   <!-- In-Browser LLM Configuration Modal -->
   <div id="llm-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
-    <div class="bg-gray-900 border border-gray-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+    <div class="bg-gray-900 border border-gray-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
       <div class="flex items-center justify-between pb-3 border-b border-gray-800">
         <div class="flex items-center gap-2">
           <span class="text-cyan-400 text-lg">⚙️</span>
@@ -397,7 +531,7 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       </div>
 
       <p class="text-xs text-gray-400">
-        Configure an AI provider to investigate this binary using verified facts and disassembly evidence. Keys are stored securely in your browser (<code class="text-cyan-400">localStorage</code>) — no server <code class="text-cyan-400">.env</code> required.
+        Configure an AI provider to investigate this binary using verified facts and disassembly evidence. Keys are stored safely in your browser (<code class="text-cyan-400">localStorage</code>) — no server <code class="text-cyan-400">.env</code> required.
       </p>
 
       <div class="space-y-3">
@@ -416,15 +550,27 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
             <label class="text-xs font-semibold text-gray-300">API Key</label>
             <span class="text-[10px] text-gray-500" id="modal-apikey-hint">Stored in browser localStorage</span>
           </div>
-          <div class="relative">
-            <input type="password" id="modal-llm-key" placeholder="Enter API Key (e.g. AIzaSy...)" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 pr-10 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
-            <button type="button" onclick="toggleKeyVisibility()" class="absolute right-2.5 top-2 text-gray-400 hover:text-white text-xs">👁️</button>
+          <div class="flex gap-2">
+            <div class="relative flex-1">
+              <input type="password" id="modal-llm-key" oninput="onApiKeyInput()" placeholder="Enter API Key (e.g. AIzaSy...)" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 pr-10 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
+              <button type="button" onclick="toggleKeyVisibility()" class="absolute right-2.5 top-2 text-gray-400 hover:text-white text-xs">👁️</button>
+            </div>
+            <button type="button" onclick="loadModelsFromApi()" id="modal-fetch-models-btn" class="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-cyan-400 border border-gray-700 rounded-lg text-xs font-medium transition flex items-center gap-1 shrink-0" title="Query provider API to get live list of models for this key">
+              <span>🔄 Fetch Models</span>
+            </button>
           </div>
         </div>
 
         <div>
-          <label class="block text-xs font-semibold text-gray-300 mb-1">Model Name</label>
-          <input type="text" id="modal-llm-model" placeholder="gemini-1.5-flash" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
+          <div class="flex justify-between items-center mb-1">
+            <label class="text-xs font-semibold text-gray-300">Model Selection</label>
+            <span class="text-[10px] text-cyan-400" id="modal-model-count-hint"></span>
+          </div>
+          <select id="modal-llm-model-select" onchange="onModelSelectChange()" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
+            <option value="gemini-1.5-flash">gemini-1.5-flash (Default)</option>
+            <option value="custom">Enter custom model name...</option>
+          </select>
+          <input type="text" id="modal-llm-model-custom" placeholder="Type custom model name..." class="hidden mt-2 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
         </div>
 
         <div id="modal-baseurl-group" class="hidden">
@@ -562,7 +708,6 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     const nodesView = new vis.DataView(nodesDataSet, {
       filter: function(item) {
         if (selectedLayer !== 'all') {
-          // Check if item belongs to this layer
           const layerObj = graphData.layers.find(l => l.id === selectedLayer);
           if (layerObj && !layerObj.nodeIds.includes(item.id)) {
             return false;
@@ -610,7 +755,6 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       network.fit({ animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
     });
 
-    // Auto-fit fallbacks
     setTimeout(() => { network.fit(); }, 200);
     setTimeout(() => { network.fit(); }, 800);
     window.addEventListener('resize', () => { network.fit(); });
@@ -685,12 +829,16 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     });
 
     function switchMainTab(tab) {
-      ['graph', 'path', 'sec', 'chat'].forEach(t => {
-        document.getElementById(t + '-view').classList.add('hidden');
-        document.getElementById('tab-btn-' + t).className = 'px-3 py-1 rounded text-gray-400 hover:text-white transition';
+      ['graph', 'ua', 'path', 'sec', 'chat'].forEach(t => {
+        const el = document.getElementById(t + '-view');
+        const btn = document.getElementById('tab-btn-' + t);
+        if (el) el.classList.add('hidden');
+        if (btn) btn.className = 'px-3 py-1 rounded text-gray-400 hover:text-white transition';
       });
-      document.getElementById(tab + '-view').classList.remove('hidden');
-      document.getElementById('tab-btn-' + tab).className = 'px-3 py-1 rounded bg-cyan-600 text-white transition';
+      const activeEl = document.getElementById(tab + '-view');
+      const activeBtn = document.getElementById('tab-btn-' + tab);
+      if (activeEl) activeEl.classList.remove('hidden');
+      if (activeBtn) activeBtn.className = 'px-3 py-1 rounded bg-cyan-600 text-white transition';
       if (tab === 'graph') {
         setTimeout(() => { network.fit(); }, 100);
       }
@@ -719,6 +867,8 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     // ==========================================
     // In-Browser LLM Configuration & Chat Engine
     // ==========================================
+    let apiKeyDebounceTimer = null;
+
     function getStoredLlmConfig() {
       try {
         return JSON.parse(localStorage.getItem('ub_llm_config') || 'null');
@@ -755,10 +905,12 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       const cfg = getStoredLlmConfig() || { provider: 'gemini', apiKey: '', model: 'gemini-1.5-flash', baseUrl: 'http://localhost:11434' };
       document.getElementById('modal-llm-provider').value = cfg.provider || 'gemini';
       document.getElementById('modal-llm-key').value = cfg.apiKey || '';
-      document.getElementById('modal-llm-model').value = cfg.model || '';
       document.getElementById('modal-llm-url').value = cfg.baseUrl || 'http://localhost:11434';
       document.getElementById('modal-test-status').classList.add('hidden');
-      onLlmProviderChange();
+      onLlmProviderChange(cfg.model);
+      if (cfg.apiKey || cfg.provider === 'ollama') {
+        loadModelsFromApi(cfg.model);
+      }
       document.getElementById('llm-modal').classList.remove('hidden');
     }
 
@@ -766,33 +918,114 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       document.getElementById('llm-modal').classList.add('hidden');
     }
 
-    function onLlmProviderChange() {
+    function onApiKeyInput() {
+      clearTimeout(apiKeyDebounceTimer);
+      apiKeyDebounceTimer = setTimeout(() => {
+        const key = document.getElementById('modal-llm-key').value.trim();
+        if (key.length >= 10) {
+          loadModelsFromApi();
+        }
+      }, 700);
+    }
+
+    async function loadModelsFromApi(selectedModelToKeep) {
+      const prov = document.getElementById('modal-llm-provider').value;
+      const key = document.getElementById('modal-llm-key').value.trim();
+      const url = document.getElementById('modal-llm-url').value.trim();
+      const hint = document.getElementById('modal-model-count-hint');
+      const select = document.getElementById('modal-llm-model-select');
+      const fetchBtn = document.getElementById('modal-fetch-models-btn');
+
+      if (prov !== 'ollama' && !key) {
+        hint.innerText = 'Enter key to list models';
+        return;
+      }
+
+      hint.innerText = 'Fetching models...';
+      fetchBtn.disabled = true;
+      fetchBtn.classList.add('opacity-50');
+
+      try {
+        const res = await fetch('/api/models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: prov, apiKey: key, baseUrl: url })
+        });
+        const data = await res.json();
+        if (data.success && data.models && data.models.length > 0) {
+          const currentVal = selectedModelToKeep || select.value;
+          select.innerHTML = '';
+          data.models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.innerText = m.name + (m.id !== m.name ? ' (' + m.id + ')' : '');
+            select.appendChild(opt);
+          });
+          const customOpt = document.createElement('option');
+          customOpt.value = 'custom';
+          customOpt.innerText = 'Custom model name...';
+          select.appendChild(customOpt);
+
+          // Select matching model if found
+          if (data.models.some(m => m.id === currentVal)) {
+            select.value = currentVal;
+          } else if (currentVal && currentVal !== 'custom') {
+            const opt = document.createElement('option');
+            opt.value = currentVal;
+            opt.innerText = currentVal + ' (Custom)';
+            select.insertBefore(opt, customOpt);
+            select.value = currentVal;
+          }
+          hint.innerText = '✓ ' + data.models.length + ' models available for key';
+          document.getElementById('modal-llm-model-custom').classList.add('hidden');
+        } else {
+          hint.innerText = data.error ? 'Fetch failed: ' + data.error.slice(0, 30) : 'Using defaults';
+        }
+      } catch (e) {
+        hint.innerText = 'Fetch failed: ' + e.message;
+      } finally {
+        fetchBtn.disabled = false;
+        fetchBtn.classList.remove('opacity-50');
+      }
+    }
+
+    function onModelSelectChange() {
+      const select = document.getElementById('modal-llm-model-select');
+      const customInput = document.getElementById('modal-llm-model-custom');
+      if (select.value === 'custom') {
+        customInput.classList.remove('hidden');
+        customInput.focus();
+      } else {
+        customInput.classList.add('hidden');
+      }
+    }
+
+    function onLlmProviderChange(preferredModel) {
       const prov = document.getElementById('modal-llm-provider').value;
       const keyGroup = document.getElementById('modal-apikey-group');
       const urlGroup = document.getElementById('modal-baseurl-group');
-      const modelInput = document.getElementById('modal-llm-model');
+      const select = document.getElementById('modal-llm-model-select');
+      const customInput = document.getElementById('modal-llm-model-custom');
+
+      customInput.classList.add('hidden');
 
       if (prov === 'ollama') {
         keyGroup.classList.add('hidden');
         urlGroup.classList.remove('hidden');
-        if (!modelInput.value || modelInput.value.includes('gemini') || modelInput.value.includes('claude') || modelInput.value.includes('gpt')) {
-          modelInput.value = 'llama3.2';
-        }
+        select.innerHTML = '<option value="llama3.2">llama3.2</option><option value="codellama">codellama</option><option value="custom">Custom...</option>';
+        if (preferredModel) select.value = preferredModel;
       } else {
         keyGroup.classList.remove('hidden');
         urlGroup.classList.add('hidden');
         if (prov === 'gemini') {
-          if (!modelInput.value || modelInput.value === 'llama3.2' || modelInput.value.includes('claude') || modelInput.value.includes('gpt')) {
-            modelInput.value = 'gemini-1.5-flash';
-          }
+          select.innerHTML = '<option value="gemini-1.5-flash">gemini-1.5-flash (Fast & Recommended)</option><option value="gemini-1.5-pro">gemini-1.5-pro</option><option value="gemini-2.0-flash">gemini-2.0-flash</option><option value="custom">Custom...</option>';
         } else if (prov === 'claude') {
-          if (!modelInput.value || modelInput.value.includes('gemini') || modelInput.value.includes('llama') || modelInput.value.includes('gpt')) {
-            modelInput.value = 'claude-3-5-sonnet-20241022';
-          }
+          select.innerHTML = '<option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option><option value="claude-3-5-haiku-20241022">claude-3-5-haiku-20241022</option><option value="custom">Custom...</option>';
         } else if (prov === 'openai') {
-          if (!modelInput.value || modelInput.value.includes('gemini') || modelInput.value.includes('claude') || modelInput.value.includes('llama')) {
-            modelInput.value = 'gpt-4o-mini';
-          }
+          select.innerHTML = '<option value="gpt-4o-mini">gpt-4o-mini (Fast & Cost Effective)</option><option value="gpt-4o">gpt-4o</option><option value="o1-mini">o1-mini</option><option value="custom">Custom...</option>';
+        }
+        if (preferredModel && Array.from(select.options).some(o => o.value === preferredModel)) {
+          select.value = preferredModel;
         }
       }
     }
@@ -805,7 +1038,9 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     function saveLlmConfig() {
       const prov = document.getElementById('modal-llm-provider').value;
       const key = document.getElementById('modal-llm-key').value.trim();
-      const model = document.getElementById('modal-llm-model').value.trim();
+      const select = document.getElementById('modal-llm-model-select');
+      const customInput = document.getElementById('modal-llm-model-custom');
+      const model = select.value === 'custom' ? customInput.value.trim() : select.value;
       const url = document.getElementById('modal-llm-url').value.trim();
 
       const config = { provider: prov, apiKey: key, model: model, baseUrl: url };
@@ -824,13 +1059,15 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     async function testLlmConnection() {
       const prov = document.getElementById('modal-llm-provider').value;
       const key = document.getElementById('modal-llm-key').value.trim();
-      const model = document.getElementById('modal-llm-model').value.trim();
+      const select = document.getElementById('modal-llm-model-select');
+      const customInput = document.getElementById('modal-llm-model-custom');
+      const model = select.value === 'custom' ? customInput.value.trim() : select.value;
       const url = document.getElementById('modal-llm-url').value.trim();
       const statusBox = document.getElementById('modal-test-status');
 
       statusBox.classList.remove('hidden');
       statusBox.className = 'p-2.5 rounded-lg text-xs font-mono bg-gray-800 text-cyan-400 animate-pulse';
-      statusBox.innerText = 'Testing connection to ' + prov + '...';
+      statusBox.innerText = 'Testing connection to ' + prov + ' (' + model + ')...';
 
       try {
         const res = await fetch('/api/test-llm', {

@@ -428,34 +428,37 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Understand Anything - Binary Architecture Intelligence</title>
+  <title>UB - Binary Architecture Intelligence</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     :root {
-      --color-root: #0A0A0A;
-      --color-surface: #111111;
-      --color-elevated: #161616;
-      --color-accent: #D4A574;
-      --color-accent-bright: #E8C49A;
+      --color-root: #0D0D0F;
+      --color-surface: #141418;
+      --color-raised: #1B1B22;
+      --color-accent: #D4A373;
+      --color-accent-bright: #F2BE8C;
+      --color-accent-glow: #E8C49A;
       --color-text-primary: #F5F0EB;
-      --color-text-secondary: #A39787;
-      --color-text-muted: #6B5F53;
-      --color-border-subtle: rgba(212, 165, 116, 0.15);
-      --color-border-medium: rgba(212, 165, 116, 0.35);
+      --color-text-secondary: #D4C4B7;
+      --color-text-muted: #8E8276;
+      --color-border-subtle: rgba(232, 196, 154, 0.12);
+      --color-border-medium: rgba(232, 196, 154, 0.28);
+      --color-cyan: #38BDF8;
+      --color-crimson: #FF3366;
     }
     body {
       background-color: var(--color-root);
       color: var(--color-text-primary);
       font-family: "Inter", system-ui, -apple-system, sans-serif;
     }
-    .font-serif-ua {
-      font-family: "DM Serif Display", Georgia, serif;
+    .font-display {
+      font-family: "Space Grotesk", system-ui, sans-serif;
     }
     .font-mono-ua {
       font-family: "JetBrains Mono", monospace;
@@ -465,79 +468,81 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       inset: 0;
       width: 100%;
       height: 100%;
-      background: radial-gradient(circle at center, #141414 0%, #0A0A0A 100%);
+      background: radial-gradient(circle at center, #17171D 0%, #0D0D0F 100%);
     }
-    .panel-scroll::-webkit-scrollbar { width: 6px; }
-    .panel-scroll::-webkit-scrollbar-thumb { background: rgba(212, 165, 116, 0.2); border-radius: 4px; }
-    .panel-scroll::-webkit-scrollbar-thumb:hover { background: rgba(212, 165, 116, 0.4); }
+    .panel-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+    .panel-scroll::-webkit-scrollbar-track { background: transparent; }
+    .panel-scroll::-webkit-scrollbar-thumb { background: rgba(212, 163, 115, 0.22); border-radius: 4px; }
+    .panel-scroll::-webkit-scrollbar-thumb:hover { background: rgba(212, 163, 115, 0.45); }
     /* Report Markdown styling */
-    .report-prose h1 { font-family: "DM Serif Display", serif; font-size: 1.6rem; font-weight: normal; color: #E8C49A; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px solid rgba(212, 165, 116, 0.2); padding-bottom: 0.5rem; }
-    .report-prose h2 { font-family: "DM Serif Display", serif; font-size: 1.3rem; font-weight: normal; color: #F5F0EB; margin-top: 2rem; margin-bottom: 0.5rem; border-bottom: 1px solid rgba(212, 165, 116, 0.2); padding-bottom: 0.4rem; }
+    .report-prose h1 { font-family: "Space Grotesk", sans-serif; font-size: 1.6rem; font-weight: 600; color: #F2BE8C; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px solid rgba(232, 196, 154, 0.15); padding-bottom: 0.5rem; }
+    .report-prose h2 { font-family: "Space Grotesk", sans-serif; font-size: 1.3rem; font-weight: 600; color: #F5F0EB; margin-top: 2rem; margin-bottom: 0.5rem; border-bottom: 1px solid rgba(232, 196, 154, 0.15); padding-bottom: 0.4rem; }
     .report-prose h3 { font-size: 1.05rem; font-weight: 600; color: #E8C49A; margin-top: 1.25rem; margin-bottom: 0.4rem; }
-    .report-prose h4 { font-size: 0.95rem; font-weight: 600; color: #A39787; margin-top: 1rem; margin-bottom: 0.25rem; }
+    .report-prose h4 { font-size: 0.95rem; font-weight: 600; color: #D4C4B7; margin-top: 1rem; margin-bottom: 0.25rem; }
     .report-prose p { margin-bottom: 0.75rem; color: #D5CBBF; line-height: 1.6; font-size: 0.85rem; }
     .report-prose ul, .report-prose ol { margin-left: 1.5rem; margin-bottom: 0.75rem; font-size: 0.85rem; }
     .report-prose li { margin-bottom: 0.25rem; color: #D5CBBF; }
-    .report-prose code { background: #161616; color: #E8C49A; padding: 0.15rem 0.35rem; border-radius: 0.25rem; font-family: "JetBrains Mono", monospace; font-size: 0.75rem; border: 1px solid rgba(212, 165, 116, 0.2); }
-    .report-prose pre { background: #111111; border: 1px solid rgba(212, 165, 116, 0.2); border-radius: 0.5rem; padding: 1rem; overflow-x: auto; margin-bottom: 1rem; }
-    .report-prose pre code { background: transparent; padding: 0; color: #A3E635; font-size: 0.75rem; border: none; }
+    .report-prose code { background: #1B1B22; color: #F2BE8C; padding: 0.15rem 0.35rem; border-radius: 0.25rem; font-family: "JetBrains Mono", monospace; font-size: 0.75rem; border: 1px solid rgba(232, 196, 154, 0.15); }
+    .report-prose pre { background: #141418; border: 1px solid rgba(232, 196, 154, 0.15); border-radius: 0.5rem; padding: 1rem; overflow-x: auto; margin-bottom: 1rem; }
+    .report-prose pre code { background: transparent; padding: 0; color: #7BD0FF; font-size: 0.75rem; border: none; }
     .report-prose table { width: 100%; border-collapse: collapse; margin-bottom: 1.25rem; font-size: 0.775rem; }
-    .report-prose th { background: #161616; color: #E8C49A; text-align: left; padding: 0.5rem 0.75rem; border: 1px solid rgba(212, 165, 116, 0.25); }
-    .report-prose td { padding: 0.5rem 0.75rem; border: 1px solid rgba(212, 165, 116, 0.15); color: #D5CBBF; }
-    .report-prose tr:nth-child(even) { background: rgba(22, 22, 22, 0.6); }
-    .report-prose blockquote { border-left: 3px solid #D4A574; padding-left: 1rem; color: #A39787; margin-bottom: 0.75rem; }
+    .report-prose th { background: #1B1B22; color: #F2BE8C; text-align: left; padding: 0.5rem 0.75rem; border: 1px solid rgba(232, 196, 154, 0.2); }
+    .report-prose td { padding: 0.5rem 0.75rem; border: 1px solid rgba(232, 196, 154, 0.1); color: #D5CBBF; }
+    .report-prose tr:nth-child(even) { background: rgba(27, 27, 34, 0.6); }
+    .report-prose blockquote { border-left: 3px solid #D4A373; padding-left: 1rem; color: #D4C4B7; margin-bottom: 0.75rem; }
   </style>
 </head>
-<body class="flex flex-col h-screen overflow-hidden bg-[#0A0A0A] text-[#F5F0EB]">
+<body class="flex flex-col h-screen overflow-hidden bg-[#0D0D0F] text-[#F5F0EB]">
   <!-- Floating Focus Exit Pill (Hidden by default, shown in immersive focus mode) -->
   <div id="immersive-exit-btn" class="hidden fixed top-3 right-4 z-50">
-    <button onclick="toggleImmersiveCanvas()" class="px-3 py-1.5 rounded-lg bg-[#111111]/90 backdrop-blur border border-[#D4A574]/60 text-[#E8C49A] hover:text-white text-xs font-medium shadow-2xl flex items-center gap-2 transition hover:bg-[#1A1A1A]">
+    <button onclick="toggleImmersiveCanvas()" class="px-3.5 py-1.5 rounded bg-[#141418]/95 backdrop-blur border border-[#D4A373]/70 text-[#F2BE8C] hover:text-white text-xs font-semibold shadow-2xl flex items-center gap-2 transition hover:bg-[#1B1B22]">
       <span>✕ Exit Focus</span>
       <span class="text-[10px] text-[#A39787] font-mono-ua">(Esc)</span>
     </button>
   </div>
 
-  <!-- Top Navigation Bar styled identically to Understand-Anything Website -->
-  <header id="main-header" class="h-14 border-b border-[#D4A574]/20 bg-[#0A0A0A]/95 backdrop-blur px-5 flex items-center justify-between shrink-0 z-30 transition-all duration-300">
+  <!-- Top Navigation Bar styled per Stitch "Obsidian Forge" Design System -->
+  <header id="main-header" class="h-14 border-b border-[#E8C49A]/15 bg-[#141418]/90 backdrop-blur-md px-5 flex items-center justify-between shrink-0 z-30 transition-all duration-300">
     <div class="flex items-center gap-3">
-      <!-- UA Logo Icon & Title -->
+      <!-- UB Brand Mark & Title -->
       <a href="/ua" class="flex items-center gap-2.5 group">
-        <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#D4A574] to-[#C9A06C] flex items-center justify-center font-bold text-[#0A0A0A] text-xs shadow-md shadow-[#D4A574]/20 font-serif-ua text-sm">
-          UA
+        <div class="w-8 h-8 rounded bg-gradient-to-tr from-[#D4A373] via-[#F2BE8C] to-[#E8C49A] flex items-center justify-center font-bold text-[#0D0D0F] shadow-md shadow-[#D4A373]/25 font-display text-sm border border-[#F2BE8C]/30">
+          UB
         </div>
         <div class="flex items-baseline gap-2">
-          <span class="font-serif-ua text-lg tracking-normal text-[#F5F0EB] group-hover:text-[#E8C49A] transition">Understand Anything</span>
-          <span class="text-[9px] font-mono-ua px-1.5 py-0.5 rounded border border-[#D4A574]/40 bg-[#D4A574]/10 text-[#E8C49A] font-medium tracking-wider uppercase">Binary</span>
+          <span class="font-display text-xl font-bold tracking-tight text-[#F5F0EB] group-hover:text-[#F2BE8C] transition">UB</span>
+          <span class="text-[9.5px] font-mono-ua px-1.5 py-0.5 rounded border border-[#E8C49A]/30 bg-[#D4A373]/10 text-[#F2BE8C] font-semibold tracking-wider uppercase">Binary Intelligence</span>
         </div>
       </a>
-      <span class="text-[#D4A574]/25">|</span>
-      <!-- Target Badge -->
+      <span class="text-[#E8C49A]/20">|</span>
+      <!-- Target Badge with Balatro active context -->
       <div class="flex items-center gap-1.5">
         <span id="target-title" class="text-xs font-mono-ua text-[#F5F0EB] font-semibold"></span>
-        <span id="target-format" class="text-[10px] font-mono-ua px-2 py-0.5 rounded-full bg-[#161616] text-[#D4A574] border border-[#D4A574]/30 font-medium uppercase"></span>
-        <span id="target-arch" class="text-[10px] font-mono-ua px-2 py-0.5 rounded-full bg-[#161616] text-[#A39787] border border-white/10 font-medium uppercase"></span>
+        <span id="target-format" class="text-[10px] font-mono-ua px-2 py-0.5 rounded bg-[#1B1B22] text-[#F2BE8C] border border-[#E8C49A]/20 font-medium uppercase"></span>
+        <span id="target-arch" class="text-[10px] font-mono-ua px-2 py-0.5 rounded bg-[#1B1B22] text-[#7BD0FF] border border-[#7BD0FF]/25 font-medium uppercase"></span>
+        <span class="text-[10px] font-mono-ua px-2 py-0.5 rounded bg-[#1B1B22] text-[#06D6A0] border border-[#06D6A0]/25 font-medium hidden sm:inline-block">LÖVE2D RUNTIME</span>
       </div>
     </div>
 
     <!-- Center Navigation Tabs -->
     <div class="flex items-center gap-2">
-      <div class="flex rounded-lg bg-[#141414] p-1 text-xs font-medium border border-[#D4A574]/20">
-        <button id="tab-btn-flow" onclick="switchMainTab('flow')" class="px-3.5 py-1 rounded-md bg-[#D4A574] text-[#0A0A0A] font-semibold transition flex items-center gap-1.5 shadow-sm">
+      <div class="flex rounded-md bg-[#0D0D0F] p-1 text-xs font-medium border border-[#E8C49A]/15">
+        <button id="tab-btn-flow" onclick="switchMainTab('flow')" class="px-3 py-1 rounded bg-[#D4A373] text-[#0D0D0F] font-bold transition flex items-center gap-1.5 shadow-sm">
           <span>⚡ Nodes Flow</span>
         </button>
-        <button id="tab-btn-physics" onclick="switchMainTab('physics')" class="px-3 py-1 rounded-md text-[#A39787] hover:text-[#F5F0EB] transition flex items-center gap-1.5">
+        <button id="tab-btn-physics" onclick="switchMainTab('physics')" class="px-3 py-1 rounded text-[#D4C4B7] hover:text-[#F5F0EB] hover:bg-[#1B1B22] transition flex items-center gap-1.5">
           <span>🪐 Force Network</span>
         </button>
-        <button id="tab-btn-report" onclick="switchMainTab('report')" class="px-3 py-1 rounded-md text-[#A39787] hover:text-[#F5F0EB] transition flex items-center gap-1.5">
+        <button id="tab-btn-report" onclick="switchMainTab('report')" class="px-3 py-1 rounded text-[#D4C4B7] hover:text-[#F5F0EB] hover:bg-[#1B1B22] transition flex items-center gap-1.5">
           <span>📋 Security Report</span>
         </button>
-        <button id="tab-btn-path" onclick="switchMainTab('path')" class="px-3 py-1 rounded-md text-[#A39787] hover:text-[#F5F0EB] transition">
+        <button id="tab-btn-path" onclick="switchMainTab('path')" class="px-3 py-1 rounded text-[#D4C4B7] hover:text-[#F5F0EB] hover:bg-[#1B1B22] transition">
           Call Path
         </button>
-        <button id="tab-btn-sec" onclick="switchMainTab('sec')" class="px-3 py-1 rounded-md text-[#A39787] hover:text-[#F5F0EB] transition">
-          Findings (<span id="sec-count">0</span>)
+        <button id="tab-btn-sec" onclick="switchMainTab('sec')" class="px-3 py-1 rounded text-[#D4C4B7] hover:text-[#F5F0EB] hover:bg-[#1B1B22] transition flex items-center gap-1">
+          Findings (<span id="sec-count" class="text-[#FF3366] font-bold">0</span>)
         </button>
-        <button id="tab-btn-chat" onclick="switchMainTab('chat')" class="px-3 py-1 rounded-md text-[#A39787] hover:text-[#F5F0EB] transition">
+        <button id="tab-btn-chat" onclick="switchMainTab('chat')" class="px-3 py-1 rounded text-[#D4C4B7] hover:text-[#F5F0EB] hover:bg-[#1B1B22] transition">
           AI Chat
         </button>
       </div>
@@ -545,24 +550,41 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
 
     <!-- Right Controls -->
     <div class="flex items-center gap-2">
-      <button onclick="toggleImmersiveCanvas()" class="px-2.5 py-1.5 rounded-lg bg-[#141414] hover:bg-[#1E1E1E] border border-[#D4A574]/25 text-[#E8C49A] text-xs font-medium flex items-center gap-1.5 transition" title="Toggle 100% immersive canvas (hides header)">
-        <span>⛶ Focus UA</span>
+      <button onclick="toggleImmersiveCanvas()" class="px-2.5 py-1.5 rounded bg-[#1B1B22] hover:bg-[#25252F] border border-[#E8C49A]/20 text-[#F2BE8C] text-xs font-medium flex items-center gap-1.5 transition" title="Toggle 100% immersive canvas (hides header)">
+        <span>⛶ Focus UB</span>
       </button>
-      <a href="/ua" target="_blank" class="px-2.5 py-1.5 rounded-lg bg-[#141414] hover:bg-[#1E1E1E] border border-[#D4A574]/25 text-[#A39787] hover:text-[#F5F0EB] text-xs font-medium flex items-center gap-1.5 transition" title="Open pure Understand-Anything in new tab">
-        <span>Pure UA</span>
+      <a href="/ua" target="_blank" class="px-2.5 py-1.5 rounded bg-[#1B1B22] hover:bg-[#25252F] border border-[#E8C49A]/20 text-[#D4C4B7] hover:text-[#F5F0EB] text-xs font-medium flex items-center gap-1.5 transition" title="Open pure Understand-Binary graph in new tab">
+        <span>UB Graph</span>
         <span class="text-[10px]">↗</span>
       </a>
-      <button onclick="openLlmModal()" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#141414] hover:bg-[#1E1E1E] border border-[#D4A574]/25 text-xs transition">
+      <button onclick="openLlmModal()" class="flex items-center gap-2 px-3 py-1.5 rounded bg-[#1B1B22] hover:bg-[#25252F] border border-[#E8C49A]/20 text-xs transition">
         <span id="llm-status-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
-        <span id="llm-status-text" class="text-[#A39787] font-medium">LLM Config</span>
-        <span class="text-[#A39787] text-[11px]">⚙️</span>
+        <span id="llm-status-text" class="text-[#D4C4B7] font-medium">LLM Config</span>
+        <span class="text-[#D4C4B7] text-[11px]">⚙️</span>
       </button>
     </div>
   </header>
 
+  <!-- High-Density Telemetry Status Strip -->
+  <div class="h-7 border-b border-[#E8C49A]/10 bg-[#0E0E10] px-5 flex items-center justify-between text-[11px] font-mono-ua shrink-0">
+    <div class="flex items-center gap-4">
+      <span class="text-[#8E8276]">TARGET: <strong class="text-[#F2BE8C]" id="telemetry-target">Balatro.app</strong></span>
+      <span class="text-white/10">|</span>
+      <span class="text-[#8E8276]">NODES: <strong class="text-[#F5F0EB]" id="telemetry-nodes">845</strong></span>
+      <span class="text-white/10">|</span>
+      <span class="text-[#8E8276]">STATIC EDGES: <strong class="text-[#F5F0EB]" id="telemetry-edges">870</strong></span>
+      <span class="text-white/10">|</span>
+      <span class="text-[#8E8276]">FINDINGS: <strong class="text-[#FF3366]" id="telemetry-findings">11</strong></span>
+    </div>
+    <div class="flex items-center gap-3 text-[10px]">
+      <span class="px-2 py-0.5 rounded bg-[#141418] border border-[#E8C49A]/15 text-[#D4C4B7]">GHIDRA 12.1 DECOMPILER</span>
+      <span class="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/60 text-emerald-400">VERIFIED FACT IR</span>
+    </div>
+  </div>
+
   <!-- Main Workspace -->
   <div class="flex flex-1 relative overflow-hidden">
-    <!-- View 1: Nodes Flow (Pure Understand-Anything Website View, Full Canvas) -->
+    <!-- View 1: Nodes Flow (Pure Understand-Binary Website View, Full Canvas) -->
     <div id="flow-view" class="flex-1 w-full h-full relative">
       <iframe src="/ua?token=ub-open-access" class="w-full h-full border-0 block" id="flow-iframe"></iframe>
     </div>
@@ -571,23 +593,23 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     <div id="physics-view" class="hidden flex-1 w-full h-full relative flex">
       <div class="flex-1 h-full relative overflow-hidden">
         <!-- Physics Filter Toolbar -->
-        <div class="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 bg-[#111111]/90 backdrop-blur p-1.5 rounded-xl border border-[#D4A574]/30 shadow-2xl text-xs">
-          <span class="text-[#A39787] font-semibold px-1">Filter:</span>
-          <button id="filter-arch-btn" onclick="setGraphFilter('architecture')" class="px-2.5 py-1 rounded-lg font-medium bg-[#D4A574] text-[#0A0A0A] transition">
+        <div class="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 bg-[#141418]/92 backdrop-blur-md p-1.5 rounded-lg border border-[#E8C49A]/20 shadow-2xl text-xs">
+          <span class="text-[#8E8276] font-semibold px-1 font-mono-ua">FILTER:</span>
+          <button id="filter-arch-btn" onclick="setGraphFilter('architecture')" class="px-2.5 py-1 rounded font-semibold bg-[#D4A373] text-[#0D0D0F] transition">
             🏛️ Architecture (<span id="count-arch">0</span>)
           </button>
-          <button id="filter-services-btn" onclick="setGraphFilter('services')" class="px-2.5 py-1 rounded-lg font-medium text-[#A39787] hover:text-[#F5F0EB] hover:bg-[#1A1A1A] transition">
+          <button id="filter-services-btn" onclick="setGraphFilter('services')" class="px-2.5 py-1 rounded font-medium text-[#D4C4B7] hover:text-[#F5F0EB] hover:bg-[#1B1B22] transition">
             ⚡ Modules (<span id="count-services">0</span>)
           </button>
-          <button id="filter-all-btn" onclick="setGraphFilter('all')" class="px-2.5 py-1 rounded-lg font-medium text-[#A39787] hover:text-[#F5F0EB] hover:bg-[#1A1A1A] transition">
+          <button id="filter-all-btn" onclick="setGraphFilter('all')" class="px-2.5 py-1 rounded font-medium text-[#D4C4B7] hover:text-[#F5F0EB] hover:bg-[#1B1B22] transition">
             🌐 All (<span id="count-all">0</span>)
           </button>
           <div class="h-4 w-px bg-white/10 mx-1"></div>
-          <select id="layer-filter-select" onchange="filterByLayer(this.value)" class="bg-[#161616] border border-[#D4A574]/30 text-[#F5F0EB] text-xs rounded-lg px-2 py-1 focus:outline-none">
+          <select id="layer-filter-select" onchange="filterByLayer(this.value)" class="bg-[#1B1B22] border border-[#E8C49A]/20 text-[#F5F0EB] text-xs rounded px-2 py-1 focus:outline-none">
             <option value="all">All Subsystems</option>
           </select>
           <div class="h-4 w-px bg-white/10 mx-1"></div>
-          <button onclick="if(network) network.fit({ animation: { duration: 400 } })" class="px-2 py-1 bg-[#161616] hover:bg-[#202020] text-[#E8C49A] rounded-lg text-xs font-medium border border-[#D4A574]/30" title="Fit All Nodes in View">
+          <button onclick="if(network) network.fit({ animation: { duration: 400 } })" class="px-2.5 py-1 bg-[#1B1B22] hover:bg-[#25252F] text-[#F2BE8C] rounded text-xs font-medium border border-[#E8C49A]/20" title="Fit All Nodes in View">
             ⛶ Fit View
           </button>
         </div>
@@ -596,22 +618,22 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     </div>
 
     <!-- View 3: Security Assessment Report (17-section full document) -->
-    <div id="report-view" class="hidden flex-1 flex flex-col bg-[#0A0A0A] overflow-hidden">
+    <div id="report-view" class="hidden flex-1 flex flex-col bg-[#0D0D0F] overflow-hidden">
       <!-- Report Sub-header -->
-      <div class="h-12 border-b border-[#D4A574]/20 bg-[#111111]/80 px-6 flex items-center justify-between shrink-0">
+      <div class="h-12 border-b border-[#E8C49A]/15 bg-[#141418]/90 px-6 flex items-center justify-between shrink-0">
         <div class="flex items-center gap-3">
-          <span class="text-xs font-semibold text-[#F5F0EB] flex items-center gap-1.5 font-serif-ua text-sm">
+          <span class="text-xs font-semibold text-[#F5F0EB] flex items-center gap-2 font-display text-sm">
             <span>📋 Publication-Grade Assessment Report</span>
-            <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#D4A574]/15 text-[#E8C49A] border border-[#D4A574]/40 font-mono-ua">17 SECTIONS</span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-[#D4A373]/15 text-[#F2BE8C] border border-[#E8C49A]/30 font-mono-ua">17 SECTIONS</span>
           </span>
-          <span class="text-[#D4A574]/30">|</span>
-          <span class="text-xs text-[#A39787]" id="report-meta">Decompiled via Ghidra 12.1 + AST Scanner</span>
+          <span class="text-[#E8C49A]/20">|</span>
+          <span class="text-xs text-[#8E8276]" id="report-meta">Decompiled via Ghidra 12.1 + AST Scanner</span>
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="downloadReportMd()" class="px-3 py-1 rounded-lg bg-[#161616] hover:bg-[#202020] text-xs border border-[#D4A574]/30 text-[#E8C49A] transition flex items-center gap-1.5">
+          <button onclick="downloadReportMd()" class="px-3 py-1 rounded bg-[#1B1B22] hover:bg-[#25252F] text-xs border border-[#E8C49A]/20 text-[#F2BE8C] transition flex items-center gap-1.5 font-medium">
             <span>⬇ Download (.md)</span>
           </button>
-          <button onclick="toggleReportRaw()" id="report-raw-btn" class="px-3 py-1 rounded-lg bg-[#161616] hover:bg-[#202020] text-xs border border-[#D4A574]/30 text-[#A39787] hover:text-[#F5F0EB] transition">
+          <button onclick="toggleReportRaw()" id="report-raw-btn" class="px-3 py-1 rounded bg-[#1B1B22] hover:bg-[#25252F] text-xs border border-[#E8C49A]/20 text-[#D4C4B7] hover:text-[#F5F0EB] transition">
             Raw Markdown
           </button>
         </div>
@@ -620,124 +642,90 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       <div class="flex-1 overflow-y-auto panel-scroll p-8">
         <div class="max-w-4xl mx-auto">
           <div id="report-rendered" class="report-prose space-y-4">
-            <div class="p-8 text-center text-[#A39787] text-xs font-mono-ua">Loading Security Assessment Report...</div>
+            <div class="p-8 text-center text-[#8E8276] text-xs font-mono-ua">Loading Security Assessment Report...</div>
           </div>
-          <pre id="report-raw" class="hidden p-6 bg-[#111111] rounded-xl border border-[#D4A574]/20 font-mono-ua text-xs text-[#D5CBBF] overflow-x-auto whitespace-pre-wrap"></pre>
+          <pre id="report-raw" class="hidden p-6 bg-[#141418] rounded-lg border border-[#E8C49A]/15 font-mono-ua text-xs text-[#D5CBBF] overflow-x-auto whitespace-pre-wrap"></pre>
         </div>
       </div>
     </div>
 
     <!-- View 4: Call Path Explorer View -->
-    <div id="path-view" class="hidden flex-1 p-8 overflow-y-auto bg-[#0A0A0A]">
+    <div id="path-view" class="hidden flex-1 p-8 overflow-y-auto bg-[#0D0D0F]">
       <div class="max-w-2xl mx-auto space-y-6">
         <div>
-          <h2 class="text-xl font-normal font-serif-ua text-[#E8C49A]">Execution-Flow Call Path Explorer</h2>
-          <p class="text-xs text-[#A39787] mt-1">Trace verified static call paths between any two functions in the binary.</p>
+          <h2 class="text-xl font-bold font-display text-[#F2BE8C]">Execution-Flow Call Path Explorer</h2>
+          <p class="text-xs text-[#8E8276] mt-1">Trace verified static call paths between any two functions or symbols in the binary.</p>
         </div>
         <div class="flex gap-3">
-          <input type="text" id="path-source" placeholder="Source function or address (e.g. main_entry)" class="flex-1 px-3 py-2 bg-[#111111] border border-[#D4A574]/30 rounded-lg text-sm text-[#F5F0EB] focus:outline-none focus:border-[#D4A574] font-mono-ua">
-          <input type="text" id="path-target" placeholder="Target function or address (e.g. _exit)" class="flex-1 px-3 py-2 bg-[#111111] border border-[#D4A574]/30 rounded-lg text-sm text-[#F5F0EB] focus:outline-none focus:border-[#D4A574] font-mono-ua">
-          <button onclick="runCallPathSearch()" class="px-4 py-2 bg-[#D4A574] hover:bg-[#E8C49A] text-[#0A0A0A] rounded-lg text-sm font-semibold transition">Find Path</button>
+          <input type="text" id="path-source" placeholder="Source function or address (e.g. main_entry, love_init)" class="flex-1 px-3 py-2 bg-[#141418] border border-[#E8C49A]/20 rounded text-sm text-[#F5F0EB] focus:outline-none focus:border-[#D4A373] font-mono-ua">
+          <input type="text" id="path-target" placeholder="Target function or address (e.g. _exit, SDL_Init)" class="flex-1 px-3 py-2 bg-[#141418] border border-[#E8C49A]/20 rounded text-sm text-[#F5F0EB] focus:outline-none focus:border-[#D4A373] font-mono-ua">
+          <button onclick="runCallPathSearch()" class="px-4 py-2 bg-[#D4A373] hover:bg-[#F2BE8C] text-[#0D0D0F] rounded text-sm font-bold transition">Find Path</button>
         </div>
-        <div id="path-result-box" class="p-4 bg-[#111111] border border-[#D4A574]/20 rounded-xl font-mono-ua text-xs text-[#A39787] min-h-32">
+        <div id="path-result-box" class="p-4 bg-[#141418] border border-[#E8C49A]/15 rounded-lg font-mono-ua text-xs text-[#8E8276] min-h-32">
           Enter source and target functions above and click "Find Path".
         </div>
       </div>
     </div>
 
     <!-- View 5: Security Findings View -->
-    <div id="sec-view" class="hidden flex-1 p-8 overflow-y-auto bg-[#0A0A0A]">
+    <div id="sec-view" class="hidden flex-1 p-8 overflow-y-auto bg-[#0D0D0F]">
       <div class="max-w-3xl mx-auto space-y-4">
         <div>
-          <h2 class="text-xl font-normal font-serif-ua text-[#E8C49A]">Security-Oriented Static Findings</h2>
-          <p class="text-xs text-[#A39787] mt-1">Automated static analysis detecting dangerous APIs, weak crypto, and embedded credentials.</p>
+          <h2 class="text-xl font-bold font-display text-[#F2BE8C]">Security-Oriented Static Findings</h2>
+          <p class="text-xs text-[#8E8276] mt-1">Automated static analysis detecting dangerous APIs, weak crypto, and embedded cleartext endpoints.</p>
         </div>
         <div id="findings-container" class="space-y-3"></div>
       </div>
     </div>
 
     <!-- View 6: AI Investigation Chat View -->
-    <div id="chat-view" class="hidden flex-1 flex flex-col bg-[#0A0A0A] p-6">
+    <div id="chat-view" class="hidden flex-1 flex flex-col bg-[#0D0D0F] p-6">
       <div class="flex-1 overflow-y-auto panel-scroll space-y-4 mb-4 max-w-3xl mx-auto w-full" id="chat-messages">
-        <div class="p-4 rounded-xl bg-[#111111] border border-[#D4A574]/20 text-xs text-[#D5CBBF]">
+        <div class="p-4 rounded-lg bg-[#141418] border border-[#E8C49A]/15 text-xs text-[#D5CBBF]">
           <div class="flex items-center justify-between mb-1">
-            <span class="font-serif-ua text-base text-[#E8C49A]">Understand-Binary Investigator</span>
-            <span id="chat-provider-badge" class="font-mono-ua text-[10px] px-2 py-0.5 rounded bg-[#161616] text-[#A39787] border border-white/10">Offline Deterministic</span>
+            <span class="font-display font-semibold text-base text-[#F2BE8C]">UB Binary Copilot</span>
+            <span id="chat-provider-badge" class="font-mono-ua text-[10px] px-2 py-0.5 rounded bg-[#1B1B22] text-[#8E8276] border border-white/10">Offline Deterministic</span>
           </div>
-          Ask any technical question about this binary (e.g. "Explain the startup sequence", "Find code handling network requests", "Where is encryption or authentication implemented?"). Every response cites verified evidence.
+          Ask any technical question about this binary (e.g. "Explain the Balatro startup flow", "Inspect card evaluation algorithms", "Where are unencrypted endpoints?"). Every response cites verified evidence.
         </div>
       </div>
       <div class="max-w-3xl mx-auto w-full flex gap-2">
-        <input type="text" id="chat-input" onkeydown="if(event.key==='Enter') sendChatMessage()" placeholder="Ask a question about the binary..." class="flex-1 px-4 py-2.5 bg-[#111111] border border-[#D4A574]/30 rounded-xl text-sm text-[#F5F0EB] focus:outline-none focus:border-[#D4A574]">
-        <button onclick="sendChatMessage()" class="px-5 py-2.5 bg-[#D4A574] hover:bg-[#E8C49A] text-[#0A0A0A] rounded-xl text-sm font-semibold transition">Ask</button>
+        <input type="text" id="chat-input" onkeydown="if(event.key==='Enter') sendChatMessage()" placeholder="Ask a question about the binary architecture..." class="flex-1 px-4 py-2.5 bg-[#141418] border border-[#E8C49A]/20 rounded-lg text-sm text-[#F5F0EB] focus:outline-none focus:border-[#D4A373]">
+        <button onclick="sendChatMessage()" class="px-5 py-2.5 bg-[#D4A373] hover:bg-[#F2BE8C] text-[#0D0D0F] rounded-lg text-sm font-bold transition">Ask</button>
       </div>
     </div>
 
     <!-- Right Drawer: Technical Inspector (Visible only in Physics Network mode) -->
-    <aside id="inspector" class="hidden w-96 border-l border-[#D4A574]/20 bg-[#0D0D0D]/95 backdrop-blur flex flex-col z-20 shrink-0">
-      <div class="p-4 border-b border-[#D4A574]/20 flex items-center justify-between">
-        <h2 class="text-xs font-semibold uppercase tracking-wider text-[#E8C49A] font-mono-ua">Symbol & Evidence Inspector</h2>
-        <span id="node-provenance-badge" class="text-[10px] px-2 py-0.5 rounded bg-[#D4A574]/10 text-[#E8C49A] border border-[#D4A574]/30 font-mono-ua">VERIFIED FACT</span>
+    <aside id="inspector" class="hidden w-96 border-l border-[#E8C49A]/15 bg-[#141418]/95 backdrop-blur-md flex flex-col z-20 shrink-0">
+      <div class="p-4 border-b border-[#E8C49A]/15 flex items-center justify-between">
+        <h2 class="text-xs font-semibold uppercase tracking-wider text-[#F2BE8C] font-mono-ua">Symbol & Evidence Inspector</h2>
+        <span id="node-provenance-badge" class="text-[10px] px-2 py-0.5 rounded bg-[#D4A373]/15 text-[#F2BE8C] border border-[#E8C49A]/30 font-mono-ua">VERIFIED FACT</span>
       </div>
 
       <div class="p-5 flex-1 overflow-y-auto panel-scroll space-y-4">
         <div>
           <h3 id="inspect-name" class="text-base font-bold text-[#F5F0EB] break-all font-mono-ua">Select a Node</h3>
-          <p id="inspect-summary" class="text-xs text-[#A39787] mt-1 leading-relaxed">Click any component, symbol, or API node on the graph to inspect disassembly instructions, memory addresses, and callers/callees.</p>
+          <p id="inspect-summary" class="text-xs text-[#8E8276] mt-1 leading-relaxed">Click any component, symbol, or API node on the graph to inspect disassembly instructions, memory addresses, and callers/callees.</p>
         </div>
 
         <div id="inspect-meta-section" class="hidden space-y-3">
-          <div class="p-3 bg-[#141414] rounded-lg border border-[#D4A574]/20 text-xs space-y-1.5 font-mono-ua">
-            <div class="flex justify-between"><span class="text-[#A39787]">Address:</span> <span id="meta-addr" class="text-[#E8C49A]"></span></div>
-            <div class="flex justify-between"><span class="text-[#A39787]">Role:</span> <span id="meta-role" class="text-amber-400"></span></div>
-            <div class="flex justify-between"><span class="text-[#A39787]">Callers:</span> <span id="meta-callers" class="text-[#F5F0EB]">0</span></div>
-            <div class="flex justify-between"><span class="text-[#A39787]">Callees:</span> <span id="meta-callees" class="text-[#F5F0EB]">0</span></div>
+          <div class="p-3 bg-[#1B1B22] rounded border border-[#E8C49A]/15 text-xs space-y-1.5 font-mono-ua">
+            <div class="flex justify-between"><span class="text-[#8E8276]">Address:</span> <span id="meta-addr" class="text-[#7BD0FF]"></span></div>
+            <div class="flex justify-between"><span class="text-[#8E8276]">Role:</span> <span id="meta-role" class="text-[#F2BE8C]"></span></div>
+            <div class="flex justify-between"><span class="text-[#8E8276]">Callers:</span> <span id="meta-callers" class="text-[#F5F0EB]">0</span></div>
+            <div class="flex justify-between"><span class="text-[#8E8276]">Callees:</span> <span id="meta-callees" class="text-[#F5F0EB]">0</span></div>
           </div>
 
           <div>
-            <label class="text-xs font-semibold text-[#A39787] block mb-1.5 font-mono-ua">Disassembled Instructions</label>
-            <div id="inspect-instructions" class="p-3 bg-[#080808] rounded-lg border border-[#D4A574]/20 text-[11px] font-mono-ua text-emerald-400 overflow-x-auto max-h-60 panel-scroll space-y-1">
+            <label class="text-xs font-semibold text-[#8E8276] block mb-1.5 font-mono-ua">Disassembled Instructions</label>
+            <div id="inspect-instructions" class="p-3 bg-[#0D0D0F] rounded border border-[#E8C49A]/15 text-[11px] font-mono-ua text-emerald-400 overflow-x-auto max-h-60 panel-scroll space-y-1">
               // Select a function with instructions
             </div>
           </div>
         </div>
 
         <div>
-          <label class="text-xs font-semibold text-[#A39787] block mb-1.5 font-mono-ua">Architectural Subsystems</label>
-          <div id="layers-list" class="space-y-1.5"></div>
-        </div>
-      </div>
-    </aside>
-  </div>
-      <div class="p-4 border-b border-gray-800 flex items-center justify-between">
-        <h2 class="text-xs font-semibold uppercase tracking-wider text-gray-400">Symbol & Evidence Inspector</h2>
-        <span id="node-provenance-badge" class="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono">VERIFIED FACT</span>
-      </div>
-
-      <div class="p-5 flex-1 overflow-y-auto panel-scroll space-y-4">
-        <div>
-          <h3 id="inspect-name" class="text-base font-bold text-white break-all">Select a Node</h3>
-          <p id="inspect-summary" class="text-xs text-gray-400 mt-1 leading-relaxed">Click any component, symbol, or API node on the graph to inspect disassembly instructions, memory addresses, and callers/callees.</p>
-        </div>
-
-        <div id="inspect-meta-section" class="hidden space-y-3">
-          <div class="p-3 bg-gray-800/60 rounded-lg border border-gray-700/60 text-xs space-y-1.5 font-mono">
-            <div class="flex justify-between"><span class="text-gray-400">Address:</span> <span id="meta-addr" class="text-cyan-400"></span></div>
-            <div class="flex justify-between"><span class="text-gray-400">Role:</span> <span id="meta-role" class="text-amber-400"></span></div>
-            <div class="flex justify-between"><span class="text-gray-400">Callers:</span> <span id="meta-callers" class="text-white">0</span></div>
-            <div class="flex justify-between"><span class="text-gray-400">Callees:</span> <span id="meta-callees" class="text-white">0</span></div>
-          </div>
-
-          <div>
-            <label class="text-xs font-semibold text-gray-400 block mb-1.5">Disassembled Instructions</label>
-            <div id="inspect-instructions" class="p-3 bg-black/60 rounded-lg border border-gray-800 text-[11px] font-mono text-emerald-400 overflow-x-auto max-h-60 panel-scroll space-y-1">
-              // Select a function with instructions
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <label class="text-xs font-semibold text-gray-400 block mb-1.5">Architectural Subsystems</label>
+          <label class="text-xs font-semibold text-[#8E8276] block mb-1.5 font-mono-ua">Architectural Subsystems</label>
           <div id="layers-list" class="space-y-1.5"></div>
         </div>
       </div>
@@ -745,24 +733,24 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
   </div>
 
   <!-- In-Browser LLM Configuration Modal -->
-  <div id="llm-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
-    <div class="bg-gray-900 border border-gray-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-      <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+  <div id="llm-modal" class="fixed inset-0 z-50 bg-[#0D0D0F]/80 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="bg-[#141418] border border-[#E8C49A]/20 rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-[#E8C49A]/15">
         <div class="flex items-center gap-2">
-          <span class="text-cyan-400 text-lg">⚙️</span>
-          <h3 class="font-bold text-white text-base">In-Browser LLM Configuration</h3>
+          <span class="text-[#F2BE8C] text-lg">⚙️</span>
+          <h3 class="font-bold text-[#F5F0EB] text-base font-display">In-Browser LLM Configuration</h3>
         </div>
-        <button onclick="closeLlmModal()" class="text-gray-400 hover:text-white text-lg">&times;</button>
+        <button onclick="closeLlmModal()" class="text-[#8E8276] hover:text-white text-lg">&times;</button>
       </div>
 
-      <p class="text-xs text-gray-400">
-        Configure an AI provider to investigate this binary using verified facts and disassembly evidence. Keys are stored safely in your browser (<code class="text-cyan-400">localStorage</code>) — no server <code class="text-cyan-400">.env</code> required.
+      <p class="text-xs text-[#8E8276]">
+        Configure an AI provider to investigate this binary using verified facts and disassembly evidence. Keys are stored safely in your browser (<code class="text-[#F2BE8C]">localStorage</code>) — no server <code class="text-[#F2BE8C]">.env</code> required.
       </p>
 
       <div class="space-y-3">
         <div>
-          <label class="block text-xs font-semibold text-gray-300 mb-1">Provider</label>
-          <select id="modal-llm-provider" onchange="onLlmProviderChange()" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+          <label class="block text-xs font-semibold text-[#D4C4B7] mb-1">Provider</label>
+          <select id="modal-llm-provider" onchange="onLlmProviderChange()" class="w-full bg-[#1B1B22] border border-[#E8C49A]/20 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4A373]">
             <option value="gemini">Google Gemini (Recommended - Fast & Accurate)</option>
             <option value="claude">Anthropic Claude (Sonnet 3.5)</option>
             <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
@@ -772,15 +760,15 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
 
         <div id="modal-apikey-group">
           <div class="flex justify-between items-center mb-1">
-            <label class="text-xs font-semibold text-gray-300">API Key</label>
-            <span class="text-[10px] text-gray-500" id="modal-apikey-hint">Stored in browser localStorage</span>
+            <label class="text-xs font-semibold text-[#D4C4B7]">API Key</label>
+            <span class="text-[10px] text-[#8E8276]" id="modal-apikey-hint">Stored in browser localStorage</span>
           </div>
           <div class="flex gap-2">
             <div class="relative flex-1">
-              <input type="password" id="modal-llm-key" oninput="onApiKeyInput()" placeholder="Enter API Key (e.g. AIzaSy...)" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 pr-10 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
-              <button type="button" onclick="toggleKeyVisibility()" class="absolute right-2.5 top-2 text-gray-400 hover:text-white text-xs">👁️</button>
+              <input type="password" id="modal-llm-key" oninput="onApiKeyInput()" placeholder="Enter API Key (e.g. AIzaSy...)" class="w-full bg-[#1B1B22] border border-[#E8C49A]/20 rounded px-3 py-2 pr-10 text-xs text-white focus:outline-none focus:border-[#D4A373] font-mono-ua">
+              <button type="button" onclick="toggleKeyVisibility()" class="absolute right-2.5 top-2 text-[#8E8276] hover:text-white text-xs">👁️</button>
             </div>
-            <button type="button" onclick="loadModelsFromApi()" id="modal-fetch-models-btn" class="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-cyan-400 border border-gray-700 rounded-lg text-xs font-medium transition flex items-center gap-1 shrink-0" title="Query provider API to get live list of models for this key">
+            <button type="button" onclick="loadModelsFromApi()" id="modal-fetch-models-btn" class="px-3 py-2 bg-[#1B1B22] hover:bg-[#25252F] text-[#F2BE8C] border border-[#E8C49A]/20 rounded text-xs font-medium transition flex items-center gap-1 shrink-0" title="Query provider API to get live list of models for this key">
               <span>🔄 Fetch Models</span>
             </button>
           </div>
@@ -788,31 +776,31 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
 
         <div>
           <div class="flex justify-between items-center mb-1">
-            <label class="text-xs font-semibold text-gray-300">Model Selection</label>
-            <span class="text-[10px] text-cyan-400" id="modal-model-count-hint"></span>
+            <label class="text-xs font-semibold text-[#D4C4B7]">Model Selection</label>
+            <span class="text-[10px] text-[#7BD0FF]" id="modal-model-count-hint"></span>
           </div>
-          <select id="modal-llm-model-select" onchange="onModelSelectChange()" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
+          <select id="modal-llm-model-select" onchange="onModelSelectChange()" class="w-full bg-[#1B1B22] border border-[#E8C49A]/20 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4A373] font-mono-ua">
             <option value="gemini-1.5-flash">gemini-1.5-flash (Default)</option>
             <option value="custom">Enter custom model name...</option>
           </select>
-          <input type="text" id="modal-llm-model-custom" placeholder="Type custom model name..." class="hidden mt-2 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
+          <input type="text" id="modal-llm-model-custom" placeholder="Type custom model name..." class="hidden mt-2 w-full bg-[#1B1B22] border border-[#E8C49A]/20 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4A373] font-mono-ua">
         </div>
 
         <div id="modal-baseurl-group" class="hidden">
-          <label class="block text-xs font-semibold text-gray-300 mb-1">Ollama Base URL</label>
-          <input type="text" id="modal-llm-url" placeholder="http://localhost:11434" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono">
+          <label class="block text-xs font-semibold text-[#D4C4B7] mb-1">Ollama Base URL</label>
+          <input type="text" id="modal-llm-url" placeholder="http://localhost:11434" class="w-full bg-[#1B1B22] border border-[#E8C49A]/20 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4A373] font-mono-ua">
         </div>
       </div>
 
-      <div id="modal-test-status" class="hidden p-2.5 rounded-lg text-xs font-mono"></div>
+      <div id="modal-test-status" class="hidden p-2.5 rounded text-xs font-mono-ua"></div>
 
-      <div class="pt-2 flex items-center justify-between border-t border-gray-800">
-        <button onclick="clearLlmConfig()" class="text-xs text-red-400 hover:underline">Clear & Use Offline</button>
+      <div class="pt-2 flex items-center justify-between border-t border-[#E8C49A]/15">
+        <button onclick="clearLlmConfig()" class="text-xs text-[#FF3366] hover:underline">Clear & Use Offline</button>
         <div class="flex gap-2">
-          <button onclick="testLlmConnection()" id="modal-test-btn" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg text-xs font-medium transition">
+          <button onclick="testLlmConnection()" id="modal-test-btn" class="px-3 py-1.5 bg-[#1B1B22] hover:bg-[#25252F] text-[#D4C4B7] border border-[#E8C49A]/20 rounded text-xs font-medium transition">
             Test Connection
           </button>
-          <button onclick="saveLlmConfig()" class="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-medium transition">
+          <button onclick="saveLlmConfig()" class="px-4 py-1.5 bg-[#D4A373] hover:bg-[#F2BE8C] text-[#0D0D0F] rounded text-xs font-bold transition">
             Save Settings
           </button>
         </div>
@@ -825,9 +813,21 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     const irData = ${irJson};
     const findingsData = ${findingsJson};
 
-    // Header initialization
-    document.getElementById('target-title').innerText = graphData.project.name || 'Binary Application';
-    document.getElementById('target-meta').innerText = graphData.project.description || 'Verified Technical Architecture';
+    // Header & Telemetry initialization
+    const projectName = graphData.project.name || 'Balatro';
+    document.getElementById('target-title').innerText = projectName;
+    if (document.getElementById('telemetry-target')) {
+      document.getElementById('telemetry-target').innerText = projectName + (graphData.project.binaryTarget ? ' (' + graphData.project.binaryTarget.format + ')' : '');
+    }
+    if (document.getElementById('telemetry-nodes')) {
+      document.getElementById('telemetry-nodes').innerText = graphData.nodes.length;
+    }
+    if (document.getElementById('telemetry-edges')) {
+      document.getElementById('telemetry-edges').innerText = graphData.edges.length;
+    }
+    if (document.getElementById('telemetry-findings')) {
+      document.getElementById('telemetry-findings').innerText = findingsData.length;
+    }
     if (graphData.project.binaryTarget) {
       document.getElementById('target-format').innerText = graphData.project.binaryTarget.format.toUpperCase();
       document.getElementById('target-arch').innerText = graphData.project.binaryTarget.arch.toUpperCase();
@@ -839,9 +839,9 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     const layerSelect = document.getElementById('layer-filter-select');
     graphData.layers.forEach(layer => {
       const el = document.createElement('div');
-      el.className = 'p-2 rounded bg-gray-800/40 border border-gray-800 text-xs text-gray-300 flex justify-between items-center cursor-pointer hover:border-gray-700';
+      el.className = 'p-2.5 rounded bg-[#1B1B22] border border-[#E8C49A]/15 text-xs text-[#D4C4B7] flex justify-between items-center cursor-pointer hover:border-[#D4A373]/40 transition';
       el.onclick = () => filterByLayer(layer.id);
-      el.innerHTML = '<span class="font-medium">' + layer.name + '</span><span class="text-gray-500 font-mono">' + layer.nodeIds.length + ' items</span>';
+      el.innerHTML = '<span class="font-medium text-[#F5F0EB]">' + layer.name + '</span><span class="text-[#8E8276] font-mono-ua text-[11px]">' + layer.nodeIds.length + ' items</span>';
       layersList.appendChild(el);
 
       const opt = document.createElement('option');
@@ -857,31 +857,31 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
     document.getElementById('count-services').innerText = servicesNodes.length;
     document.getElementById('count-all').innerText = graphData.nodes.length;
 
-    // Render Findings View
+    // Render Findings View per Obsidian Forge Design System
     const findingsContainer = document.getElementById('findings-container');
     if (findingsData.length === 0) {
-      findingsContainer.innerHTML = '<div class="p-4 bg-gray-900 border border-gray-800 rounded-xl text-xs text-gray-400">No static security vulnerabilities or hardcoded secret patterns detected.</div>';
+      findingsContainer.innerHTML = '<div class="p-4 bg-[#141418] border border-[#E8C49A]/15 rounded-lg text-xs text-[#8E8276]">No static security vulnerabilities or hardcoded secret patterns detected.</div>';
     } else {
       findingsData.forEach(f => {
-        const borderCol = f.severity === 'critical' ? 'border-red-500/40' : f.severity === 'high' ? 'border-amber-500/40' : 'border-blue-500/40';
-        const badgeCol = f.severity === 'critical' ? 'bg-red-950 text-red-400 border-red-800' : f.severity === 'high' ? 'bg-amber-950 text-amber-400 border-amber-800' : 'bg-blue-950 text-blue-400 border-blue-800';
+        const borderCol = f.severity === 'critical' ? 'border-[#FF3366]/40 shadow-lg shadow-[#FF3366]/10' : f.severity === 'high' ? 'border-[#F2BE8C]/40' : 'border-[#7BD0FF]/30';
+        const badgeCol = f.severity === 'critical' ? 'bg-[#FF3366]/15 text-[#FF3366] border-[#FF3366]/40' : f.severity === 'high' ? 'bg-[#D4A373]/15 text-[#F2BE8C] border-[#E8C49A]/30' : 'bg-[#7BD0FF]/15 text-[#7BD0FF] border-[#7BD0FF]/30';
         const card = document.createElement('div');
-        card.className = 'p-4 rounded-xl bg-gray-900 border ' + borderCol + ' space-y-2';
-        card.innerHTML = '<div class="flex items-center justify-between"><span class="text-xs px-2 py-0.5 rounded border font-mono ' + badgeCol + '">' + f.severity.toUpperCase() + '</span><span class="text-xs font-mono text-gray-400">' + f.id + '</span></div>'
-          + '<h3 class="text-sm font-bold text-white">' + f.title + '</h3>'
-          + '<p class="text-xs text-gray-400">' + f.description + '</p>'
-          + '<div class="text-[11px] font-mono text-gray-500">Location: ' + f.affectedAddressOrFunction + '</div>'
-          + '<div class="p-2.5 rounded bg-black/40 border border-gray-800 text-[11px] text-emerald-400 font-mono">Remediation: ' + f.remediation + '</div>';
+        card.className = 'p-4 rounded-lg bg-[#141418] border ' + borderCol + ' space-y-2';
+        card.innerHTML = '<div class="flex items-center justify-between"><span class="text-[10px] px-2 py-0.5 rounded border font-mono-ua ' + badgeCol + '">' + f.severity.toUpperCase() + '</span><span class="text-xs font-mono-ua text-[#8E8276]">' + f.id + '</span></div>'
+          + '<h3 class="text-sm font-bold text-[#F5F0EB] font-display">' + f.title + '</h3>'
+          + '<p class="text-xs text-[#D5CBBF]">' + f.description + '</p>'
+          + '<div class="text-[11px] font-mono-ua text-[#8E8276]">Location: <span class="text-[#7BD0FF]">' + f.affectedAddressOrFunction + '</span></div>'
+          + '<div class="p-2.5 rounded bg-[#0D0D0F] border border-[#E8C49A]/15 text-[11px] text-emerald-400 font-mono-ua">Remediation: ' + f.remediation + '</div>';
         findingsContainer.appendChild(card);
       });
     }
 
     // Role Palette & Vis Nodes Construction
     const roleColors = {
-      service: '#4F46E5',    // Indigo (Subsystems)
-      module: '#0284C7',     // Sky Blue (Modules)
-      endpoint: '#D97706',   // Amber (APIs / Exports)
-      function: '#059669'    // Emerald (Internal Functions)
+      service: '#D4A373',    // Radiant Bronze (Subsystems)
+      module: '#7BD0FF',     // Electric Cyan (Modules)
+      endpoint: '#06D6A0',   // Emerald (APIs / Exports)
+      function: '#9C8E82'    // Slate Bronze (Internal Functions)
     };
 
     // Pre-position nodes initially so physics runs smoothly without exploding
@@ -900,9 +900,9 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
         title: n.name + '\\nType: ' + n.type + '\\nSummary: ' + (n.summary || ''),
         color: {
           background: roleColors[n.type] || '#475569',
-          border: isBox ? '#93C5FD' : '#334155',
-          highlight: { background: '#38BDF8', border: '#FFFFFF' },
-          hover: { background: '#60A5FA', border: '#FFFFFF' }
+          border: isBox ? '#F2BE8C' : '#50453B',
+          highlight: { background: '#F2BE8C', border: '#FFFFFF' },
+          hover: { background: '#E8C49A', border: '#FFFFFF' }
         },
         shape: isBox ? 'box' : (isEndpoint ? 'box' : 'dot'),
         margin: isBox ? 10 : 6,
@@ -1071,7 +1071,7 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
             document.getElementById('meta-callees').innerText = (irSym.callees || []).length;
             const instBox = document.getElementById('inspect-instructions');
             if (irSym.instructions && irSym.instructions.length > 0) {
-              instBox.innerHTML = irSym.instructions.map(i => '<div class="flex gap-2"><span class="text-gray-500">' + i.address + '</span><span class="text-cyan-400 font-bold">' + i.mnemonic + '</span><span class="text-gray-300">' + i.operands + (i.symbolStub ? ' (' + i.symbolStub + ')' : '') + '</span></div>').join('');
+              instBox.innerHTML = irSym.instructions.map(i => '<div class="flex gap-2 font-mono-ua"><span class="text-[#8E8276]">' + i.address + '</span><span class="text-[#7BD0FF] font-bold">' + i.mnemonic + '</span><span class="text-[#F5F0EB]">' + i.operands + (i.symbolStub ? ' <span class="text-[#F2BE8C]">(' + i.symbolStub + ')</span>' : '') + '</span></div>').join('');
             } else {
               instBox.innerText = node.binaryMeta.pseudoCode || '// No instruction disassembly recorded';
             }
@@ -1164,13 +1164,13 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
         const el = document.getElementById(t + '-view');
         const btn = document.getElementById('tab-btn-' + t);
         if (el) el.classList.add('hidden');
-        if (btn) btn.className = 'px-3 py-1 rounded-md text-[#A39787] hover:text-[#F5F0EB] hover:bg-[#1A1A1A] transition flex items-center gap-1.5';
+        if (btn) btn.className = 'px-3 py-1 rounded text-[#D4C4B7] hover:text-[#F5F0EB] hover:bg-[#1B1B22] transition flex items-center gap-1.5';
       });
 
       const activeEl = document.getElementById(tab + '-view');
       const activeBtn = document.getElementById('tab-btn-' + tab);
       if (activeEl) activeEl.classList.remove('hidden');
-      if (activeBtn) activeBtn.className = 'px-3.5 py-1 rounded-md bg-[#D4A574] text-[#0A0A0A] font-semibold transition flex items-center gap-1.5 shadow-sm';
+      if (activeBtn) activeBtn.className = 'px-3 py-1 rounded bg-[#D4A373] text-[#0D0D0F] font-bold transition flex items-center gap-1.5 shadow-sm';
 
       if (tab === 'physics') {
         if (inspector) inspector.classList.remove('hidden');

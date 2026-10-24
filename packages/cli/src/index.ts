@@ -6,7 +6,12 @@ import pc from 'picocolors';
 import { analyzeBinaryTarget } from '@understand-binary/core-re';
 import { normalizeBinaryAnalysis } from '@understand-binary/bridge';
 import { synthesizeKnowledgeGraph } from '@understand-binary/graph-engine';
-import { scanSecurityFindings, runMCPServerStdio, BinaryInvestigator } from '@understand-binary/investigator';
+import {
+  scanSecurityFindings,
+  runMCPServerStdio,
+  BinaryInvestigator,
+  generateSecurityAssessmentReport,
+} from '@understand-binary/investigator';
 import { startDashboardServer } from './server.js';
 
 const program = new Command();
@@ -23,6 +28,8 @@ program
   .option('--dashboard', 'Immediately launch interactive visualization dashboard after analysis', false)
   .option('-p, --port <port>', 'Dashboard port', '3000')
   .option('-f, --force', 'Force full re-analysis even if cached artifacts exist', false)
+  .option('--ghidra', 'Decompile native binaries and addons with Ghidra headless analyzer', true)
+  .option('--no-ghidra', 'Disable Ghidra headless decompiler')
   .action(async (target: string, options) => {
     try {
       const targetPath = path.resolve(process.cwd(), target);
@@ -78,7 +85,9 @@ program
       } else {
         // Phase 1: REA Ingestion, Disassembly, & Symbol Extraction
         console.log(pc.blue(`[1/4] Running extraction, disassembly & instruction decoding...`));
-        const reResult = await analyzeBinaryTarget(targetPath);
+        const reResult = await analyzeBinaryTarget(targetPath, {
+          useGhidra: options.ghidra !== false,
+        });
         console.log(
           pc.gray(
             `      Format: ${pc.green(reResult.metadata.format.toUpperCase())} (${reResult.metadata.architecture}) | Functions: ${pc.white(
@@ -119,14 +128,21 @@ program
         );
       }
 
+      // Generate 17-section Security Assessment Report
+      const reportMarkdown = generateSecurityAssessmentReport(targetPath, archIR, securityFindings, {
+        useGhidra: options.ghidra !== false,
+      });
+
       // Persist Artifacts
       const graphFile = path.join(outDir, 'knowledge-graph.json');
       const irFile = path.join(outDir, 'architecture-ir.json');
       const findingsFile = path.join(outDir, 'security-findings.json');
+      const reportFile = path.join(outDir, 'security-report.md');
 
       fs.writeFileSync(graphFile, JSON.stringify(knowledgeGraph, null, 2), 'utf-8');
       fs.writeFileSync(irFile, JSON.stringify(archIR, null, 2), 'utf-8');
       fs.writeFileSync(findingsFile, JSON.stringify(securityFindings, null, 2), 'utf-8');
+      fs.writeFileSync(reportFile, reportMarkdown, 'utf-8');
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
       console.log(pc.green(`\n✓ Analysis complete in ${elapsed}s!`));
@@ -222,6 +238,55 @@ program
       console.log(pc.gray(`Tools Executed: ${result.toolCallsExecuted.join(', ')}\n`));
     } catch (err: any) {
       console.error(pc.red(`Investigation failed: ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('report <target>')
+  .description('Generate an extensive, publication-grade 17-section security assessment report using Ghidra & AST analysis')
+  .option('-o, --output <file>', 'Output markdown report file', 'docs/SECURITY_ASSESSMENT_REPORT.md')
+  .option('--ghidra', 'Decompile native binaries and addons with Ghidra headless analyzer', true)
+  .option('--no-ghidra', 'Disable Ghidra headless decompiler')
+  .option('-f, --force', 'Force full re-analysis bypassing cache', false)
+  .action(async (target: string, options) => {
+    try {
+      const targetPath = path.resolve(process.cwd(), target);
+      if (!fs.existsSync(targetPath)) {
+        console.error(pc.red(`Error: Target not found at ${targetPath}`));
+        process.exit(1);
+      }
+
+      console.log(pc.cyan(`\n📋 [Understand-Binary] Generating Comprehensive 17-Section Security Assessment Report`));
+      console.log(`   Target: ${pc.bold(targetPath)}`);
+      console.log(`   Engine: ${options.ghidra ? pc.green('Ghidra 12.1 Headless Decompiler + AST Scanner') : pc.yellow('Standard AST Scanner')}\n`);
+
+      const startTime = Date.now();
+      const reResult = await analyzeBinaryTarget(targetPath, {
+        useGhidra: options.ghidra !== false,
+      });
+
+      const archIR = normalizeBinaryAnalysis(reResult);
+      const securityFindings = scanSecurityFindings(archIR);
+
+      const reportMarkdown = generateSecurityAssessmentReport(targetPath, archIR, securityFindings, {
+        useGhidra: options.ghidra !== false,
+      });
+
+      const outPath = path.resolve(process.cwd(), options.output);
+      const outDir = path.dirname(outPath);
+      if (!fs.existsSync(outDir)) {
+        fs.mkdirSync(outDir, { recursive: true });
+      }
+
+      fs.writeFileSync(outPath, reportMarkdown, 'utf-8');
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+
+      console.log(pc.green(`✓ Report generated in ${elapsed}s!`));
+      console.log(`  Report saved to: ${pc.bold(pc.cyan(outPath))}`);
+      console.log(`  Length: ${pc.white(reportMarkdown.length.toLocaleString())} characters across 17 structured sections.\n`);
+    } catch (err: any) {
+      console.error(pc.red(`Report generation failed: ${err.message}`));
       process.exit(1);
     }
   });

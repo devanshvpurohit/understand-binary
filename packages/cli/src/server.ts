@@ -6,6 +6,7 @@ import {
   BinaryInspectionTools,
   BinaryInvestigator,
   scanSecurityFindings,
+  generateSecurityAssessmentReport,
   GeminiProvider,
   ClaudeProvider,
   OpenAIProvider,
@@ -220,6 +221,28 @@ export function startDashboardServer(graphDir: string, port = 3000): Promise<str
       return;
     }
 
+    // GET /api/report
+    if (url.pathname === '/api/report') {
+      const reportPath = path.join(graphDir, 'security-report.md');
+      if (fs.existsSync(reportPath)) {
+        res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' });
+        fs.createReadStream(reportPath).pipe(res);
+        return;
+      }
+      if (ir) {
+        const findings = fs.existsSync(findingsPath)
+          ? JSON.parse(fs.readFileSync(findingsPath, 'utf-8'))
+          : scanSecurityFindings(ir);
+        const report = generateSecurityAssessmentReport(ir.targetInfo.filePath, ir, findings);
+        res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' });
+        res.end(report);
+        return;
+      }
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('# Security Assessment Report\n\nNo report available for this target.');
+      return;
+    }
+
     // GET /api/callpath?source=X&target=Y
     if (url.pathname === '/api/callpath') {
       const source = url.searchParams.get('source') || '';
@@ -385,12 +408,29 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     body { background-color: #0B0F17; color: #E2E8F0; font-family: ui-sans-serif, system-ui, sans-serif; }
     #graph-view { position: relative; width: 100%; height: 100%; min-height: 500px; }
     #network { position: absolute; inset: 0; width: 100%; height: 100%; background: radial-gradient(circle at center, #131A29 0%, #0B0F17 100%); }
     .panel-scroll::-webkit-scrollbar { width: 6px; }
     .panel-scroll::-webkit-scrollbar-thumb { background: #2D3748; border-radius: 4px; }
+    /* Report Markdown styling */
+    .report-prose h1 { font-size: 1.5rem; font-weight: 800; color: #38BDF8; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px solid #1E293B; padding-bottom: 0.5rem; }
+    .report-prose h2 { font-size: 1.25rem; font-weight: 700; color: #F8FAFC; margin-top: 2rem; margin-bottom: 0.5rem; border-bottom: 1px solid #1E293B; padding-bottom: 0.4rem; }
+    .report-prose h3 { font-size: 1.05rem; font-weight: 600; color: #CBD5E1; margin-top: 1.25rem; margin-bottom: 0.4rem; }
+    .report-prose h4 { font-size: 0.95rem; font-weight: 600; color: #94A3B8; margin-top: 1rem; margin-bottom: 0.25rem; }
+    .report-prose p { margin-bottom: 0.75rem; color: #CBD5E1; line-height: 1.6; font-size: 0.825rem; }
+    .report-prose ul, .report-prose ol { margin-left: 1.5rem; margin-bottom: 0.75rem; font-size: 0.825rem; }
+    .report-prose li { margin-bottom: 0.25rem; color: #CBD5E1; }
+    .report-prose code { background: #1E293B; color: #38BDF8; padding: 0.15rem 0.35rem; border-radius: 0.25rem; font-family: monospace; font-size: 0.75rem; }
+    .report-prose pre { background: #0F172A; border: 1px solid #1E293B; border-radius: 0.5rem; padding: 1rem; overflow-x: auto; margin-bottom: 1rem; }
+    .report-prose pre code { background: transparent; padding: 0; color: #34D399; font-size: 0.75rem; }
+    .report-prose table { width: 100%; border-collapse: collapse; margin-bottom: 1.25rem; font-size: 0.775rem; }
+    .report-prose th { background: #1E293B; color: #E2E8F0; text-align: left; padding: 0.5rem 0.75rem; border: 1px solid #334155; }
+    .report-prose td { padding: 0.5rem 0.75rem; border: 1px solid #1E293B; color: #CBD5E1; }
+    .report-prose tr:nth-child(even) { background: rgba(30, 41, 59, 0.4); }
+    .report-prose blockquote { border-left: 3px solid #38BDF8; padding-left: 1rem; color: #94A3B8; margin-bottom: 0.75rem; }
   </style>
 </head>
 <body class="flex flex-col h-screen overflow-hidden">
@@ -415,6 +455,7 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       <input type="text" id="search-box" oninput="searchGraph(this.value)" placeholder="Search symbols, functions..." class="px-3 py-1.5 bg-gray-800/80 border border-gray-700 rounded-lg text-xs focus:outline-none focus:border-cyan-500 w-52 text-gray-200">
       <div class="flex rounded-lg bg-gray-800 p-0.5 text-xs font-medium border border-gray-700">
         <button id="tab-btn-graph" onclick="switchMainTab('graph')" class="px-3 py-1 rounded bg-cyan-600 text-white transition">RE Architecture</button>
+        <button id="tab-btn-report" onclick="switchMainTab('report')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition flex items-center gap-1"><span>📋 Security Report</span></button>
         <button id="tab-btn-path" onclick="switchMainTab('path')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">Call Path</button>
         <button id="tab-btn-sec" onclick="switchMainTab('sec')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">Findings (<span id="sec-count">0</span>)</button>
         <button id="tab-btn-chat" onclick="switchMainTab('chat')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">AI Chat</button>
@@ -484,6 +525,38 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
         <!-- Mode 2: Force-directed Physics Canvas -->
         <div id="physics-container" class="absolute inset-0 w-full h-full hidden">
           <div id="network" class="w-full h-full"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Security Assessment Report View (17-section full document) -->
+    <div id="report-view" class="hidden flex-1 flex flex-col bg-gray-950 overflow-hidden">
+      <!-- Report Sub-header -->
+      <div class="h-12 border-b border-gray-800 bg-gray-900/80 px-6 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-3">
+          <span class="text-xs font-semibold text-white flex items-center gap-1.5">
+            <span>📋 Publication-Grade Assessment Report</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono">17 SECTIONS</span>
+          </span>
+          <span class="text-xs text-gray-500">|</span>
+          <span class="text-xs text-gray-400" id="report-meta">Decompiled via Ghidra 12.1 + AST Scanner</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="downloadReportMd()" class="px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs border border-gray-700 text-gray-200 transition flex items-center gap-1.5">
+            <span>⬇ Download (.md)</span>
+          </button>
+          <button onclick="toggleReportRaw()" id="report-raw-btn" class="px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs border border-gray-700 text-gray-200 transition">
+            Raw Markdown
+          </button>
+        </div>
+      </div>
+      <!-- Report Body Container -->
+      <div class="flex-1 overflow-y-auto panel-scroll p-8">
+        <div class="max-w-4xl mx-auto">
+          <div id="report-rendered" class="report-prose space-y-4">
+            <div class="p-8 text-center text-gray-500 text-xs">Loading Security Assessment Report...</div>
+          </div>
+          <pre id="report-raw" class="hidden p-6 bg-gray-900 rounded-xl border border-gray-800 font-mono text-xs text-gray-300 overflow-x-auto whitespace-pre-wrap"></pre>
         </div>
       </div>
     </div>
@@ -931,8 +1004,63 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       }
     }
 
+    let reportLoaded = false;
+    let reportRawMode = false;
+    window.reportMarkdown = '';
+
+    async function loadSecurityReport() {
+      if (reportLoaded && window.reportMarkdown) return;
+      const renderedBox = document.getElementById('report-rendered');
+      const rawBox = document.getElementById('report-raw');
+      renderedBox.innerHTML = '<div class="p-8 text-center text-gray-500 text-xs">Loading publication-grade security report...</div>';
+      try {
+        const resp = await fetch('/api/report');
+        if (!resp.ok) throw new Error('Failed to fetch security report (' + resp.status + ')');
+        const md = await resp.text();
+        window.reportMarkdown = md;
+        reportLoaded = true;
+        if (window.marked) {
+          renderedBox.innerHTML = marked.parse(md);
+        } else {
+          renderedBox.innerText = md;
+        }
+        rawBox.innerText = md;
+      } catch (err) {
+        renderedBox.innerHTML = '<div class="p-8 text-center text-rose-400 text-xs">Failed to load report: ' + err.message + '</div>';
+      }
+    }
+
+    function toggleReportRaw() {
+      reportRawMode = !reportRawMode;
+      const renderedBox = document.getElementById('report-rendered');
+      const rawBox = document.getElementById('report-raw');
+      const btn = document.getElementById('report-raw-btn');
+      if (reportRawMode) {
+        renderedBox.classList.add('hidden');
+        rawBox.classList.remove('hidden');
+        btn.innerText = 'Rendered View';
+        btn.classList.add('bg-cyan-700', 'text-white');
+      } else {
+        rawBox.classList.add('hidden');
+        renderedBox.classList.remove('hidden');
+        btn.innerText = 'Raw Markdown';
+        btn.classList.remove('bg-cyan-700', 'text-white');
+      }
+    }
+
+    function downloadReportMd() {
+      if (!window.reportMarkdown) return;
+      const blob = new Blob([window.reportMarkdown], { type: 'text/markdown;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'SECURITY_ASSESSMENT_REPORT.md';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
     function switchMainTab(tab) {
-      ['graph', 'path', 'sec', 'chat'].forEach(t => {
+      ['graph', 'report', 'path', 'sec', 'chat'].forEach(t => {
         const el = document.getElementById(t + '-view');
         const btn = document.getElementById('tab-btn-' + t);
         if (el) el.classList.add('hidden');
@@ -942,6 +1070,9 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       const activeBtn = document.getElementById('tab-btn-' + tab);
       if (activeEl) activeEl.classList.remove('hidden');
       if (activeBtn) activeBtn.className = 'px-3 py-1 rounded bg-cyan-600 text-white transition';
+      if (tab === 'report') {
+        loadSecurityReport();
+      }
     }
 
     async function runCallPathSearch() {

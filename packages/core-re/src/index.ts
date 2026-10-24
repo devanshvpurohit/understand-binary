@@ -10,6 +10,8 @@ export * from './detector.js';
 export * from './strings.js';
 export * from './utils/exec.js';
 export * from './engines/macosApp.js';
+export * from './engines/ghidra.js';
+export * from './engines/electronSecurity.js';
 
 export async function analyzeBinaryTarget(
   targetPath: string,

@@ -134,4 +134,5 @@ export interface AnalysisOptions {
   maxDisassemblyLines?: number;
   decompile?: boolean;
   deepTrace?: boolean;
+  useGhidra?: boolean;
 }

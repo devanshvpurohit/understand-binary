@@ -2,14 +2,30 @@ import type { ArchitectureIR } from '@understand-binary/bridge';
 
 export interface SecurityFinding {
   id: string;
-  category: 'unsafe_memory' | 'command_injection' | 'weak_cryptography' | 'hardcoded_secrets' | 'dangerous_ipc';
+  category:
+    | 'unsafe_memory'
+    | 'command_injection'
+    | 'weak_cryptography'
+    | 'hardcoded_secrets'
+    | 'dangerous_ipc'
+    | 'integrity_bypass'
+    | 'insecure_window'
+    | 'overly_broad_scheme'
+    | 'insecure_storage'
+    | 'disabled_sandbox'
+    | 'client_side_ml_unattested';
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
   confidence: 'high' | 'medium' | 'low';
+  cvssScore?: number;
+  cvssVector?: string;
+  cwe?: string;
   title: string;
   description: string;
   affectedAddressOrFunction: string;
   supportingEvidence: string[];
+  codeSnippet?: string;
   remediation: string;
+  proofOfConceptTest?: string;
 }
 
 const DANGEROUS_MEMORY_FUNCS = new Set([

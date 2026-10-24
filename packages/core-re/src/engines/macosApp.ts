@@ -9,6 +9,7 @@ import type {
 import { analyzeNativeBinary } from './native.js';
 import { analyzeElectronTarget } from './electron.js';
 import { inspectBinaryFormat } from '../detector.js';
+import { decompileWithGhidra, isGhidraAvailable } from './ghidra.js';
 
 function extractEmbeddedScriptModules(resourcesDir: string): {
   modules: BinaryAnalysisResult['modules'];
@@ -108,7 +109,7 @@ export async function analyzeMacOSApp(
   const nativeBinaryPath = execName ? path.join(macosDir, execName) : '';
   const isElectron = fs.existsSync(asarPath);
 
-  // 2. If it's an Electron App Bundle, perform dual-layer analysis
+  // 2. If it's an Electron App Bundle, perform multi-layer analysis
   if (isElectron) {
     const electronResult = analyzeElectronTarget(asarPath, options);
     let nativeResult: BinaryAnalysisResult | null = null;
@@ -117,6 +118,51 @@ export async function analyzeMacOSApp(
       try {
         nativeResult = await analyzeNativeBinary(nativeBinaryPath, options);
       } catch {}
+    }
+
+    // Inspect unpacked native addons (.node) using Ghidra
+    const unpackedDir = path.join(resourcesDir, 'app.asar.unpacked');
+    const nativeAddonFuncs: DisassembledFunction[] = [];
+    const nativeAddonModules: BinaryAnalysisResult['modules'] = [];
+
+    if (fs.existsSync(unpackedDir)) {
+      const nodeFiles: string[] = [];
+      const findAddons = (dir: string) => {
+        try {
+          const entries = fs.readdirSync(dir, { withFileTypes: true });
+          for (const ent of entries) {
+            const full = path.join(dir, ent.name);
+            if (ent.isDirectory()) findAddons(full);
+            else if (ent.name.endsWith('.node')) nodeFiles.push(full);
+          }
+        } catch {}
+      };
+      findAddons(unpackedDir);
+
+      const hostTarget = process.arch === 'arm64' ? 'arm64' : 'x64';
+      const preferredAddons = nodeFiles.filter(p => p.includes(hostTarget) || !p.includes('darwin-'));
+      const targets = preferredAddons.length > 0 ? preferredAddons : nodeFiles;
+
+      for (const addonPath of targets) {
+        const modName = path.basename(addonPath);
+        if (options.useGhidra !== false && isGhidraAvailable()) {
+          try {
+            const ghidraRes = await decompileWithGhidra(addonPath, { maxFunctions: 80 });
+            if (ghidraRes.success && ghidraRes.functions.length > 0) {
+              const funcs = ghidraRes.functions.map(f => ({
+                ...f,
+                moduleName: modName,
+              }));
+              nativeAddonFuncs.push(...funcs);
+              nativeAddonModules.push({
+                name: modName,
+                type: 'native_lib',
+                functions: funcs.map(f => f.id),
+              });
+            }
+          } catch {}
+        }
+      }
     }
 
     const inspection = inspectBinaryFormat(appPath);
@@ -136,8 +182,14 @@ export async function analyzeMacOSApp(
         ...(nativeResult?.metadata.importedLibraries || []),
         ...electronResult.metadata.importedLibraries,
       ],
-      exportedSymbolsCount: (nativeResult?.metadata.exportedSymbolsCount || 0) + electronResult.metadata.exportedSymbolsCount,
-      functionsCount: (nativeResult?.functions.length || 0) + electronResult.functions.length,
+      exportedSymbolsCount:
+        (nativeResult?.metadata.exportedSymbolsCount || 0) +
+        electronResult.metadata.exportedSymbolsCount +
+        nativeAddonFuncs.filter(f => f.isExported).length,
+      functionsCount:
+        (nativeResult?.functions.length || 0) +
+        electronResult.functions.length +
+        nativeAddonFuncs.length,
       stringsCount: electronResult.strings.length + (nativeResult?.strings.length || 0),
       sha256: inspection.sha256,
     };
@@ -147,6 +199,7 @@ export async function analyzeMacOSApp(
       sections: nativeResult?.sections || [],
       functions: [
         ...(nativeResult?.functions || []),
+        ...nativeAddonFuncs,
         ...electronResult.functions,
       ],
       strings: [
@@ -160,6 +213,7 @@ export async function analyzeMacOSApp(
       ],
       modules: [
         ...(nativeResult?.modules || []),
+        ...nativeAddonModules,
         ...electronResult.modules,
       ],
       coverage: {
@@ -167,7 +221,7 @@ export async function analyzeMacOSApp(
         sectionExtraction: nativeResult ? 'complete' : 'unavailable',
         symbolResolution: 'complete',
         disassembly: 'complete',
-        decompilation: 'complete',
+        decompilation: nativeAddonFuncs.length > 0 ? 'complete' : 'partial',
         callGraph: 'complete',
         stringExtraction: 'complete',
         semanticAnalysis: 'pending',

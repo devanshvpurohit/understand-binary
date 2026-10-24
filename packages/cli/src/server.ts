@@ -176,16 +176,34 @@ export function startDashboardServer(graphDir: string, port = 3000): Promise<str
     if (url.pathname === '/api/graph' || url.pathname === '/knowledge-graph.json') {
       try {
         const raw = JSON.parse(fs.readFileSync(graphPath, 'utf-8'));
+        if (!raw.project) raw.project = {};
+        if (!raw.project.name) raw.project.name = path.basename(graphDir);
         if (!raw.project.languages || !Array.isArray(raw.project.languages)) {
-          raw.project.languages = ['Lua', 'C++', 'Mach-O'];
+          raw.project.languages = ['JavaScript', 'TypeScript', 'C++'];
         }
         if (!raw.project.frameworks || !Array.isArray(raw.project.frameworks)) {
-          raw.project.frameworks = ['LÖVE2D', 'Cocoa', 'LuaJIT'];
+          raw.project.frameworks = ['Electron', 'Node.js', 'Chromium'];
+        }
+        if (!raw.project.description) {
+          raw.project.description = `Reconstructed Architecture Knowledge Graph for ${raw.project.name}`;
+        }
+        if (!raw.project.analyzedAt) {
+          raw.project.analyzedAt = new Date().toISOString();
+        }
+        if (!raw.project.gitCommitHash) {
+          raw.project.gitCommitHash = 'binary-reconstruction';
         }
         if (Array.isArray(raw.tour)) {
           for (const step of raw.tour) {
-            if (!step.nodeIds) step.nodeIds = step.targetNodeIds || [];
+            if (!step.nodeIds || !Array.isArray(step.nodeIds)) {
+              step.nodeIds = step.targetNodeIds || [];
+            }
           }
+        } else {
+          raw.tour = [];
+        }
+        if (!Array.isArray(raw.layers)) {
+          raw.layers = [];
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(raw));
@@ -365,6 +383,12 @@ export function startDashboardServer(graphDir: string, port = 3000): Promise<str
       return;
     }
 
+    if (url.pathname === '/domain-graph.json') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ version: '1.0.0', kind: 'domain', nodes: [], edges: [], layers: [] }));
+      return;
+    }
+
     // GET /ua - Direct Understand-Anything React Flow dashboard (zero key/token required)
     if (url.pathname === '/ua' || url.pathname === '/understand-anything') {
       const uaIndex = path.join(dashboardDist, 'index.html');
@@ -404,148 +428,190 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Understand-Binary Interactive Platform</title>
+  <title>Understand Anything - Binary Architecture Intelligence</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
-    body { background-color: #0B0F17; color: #E2E8F0; font-family: ui-sans-serif, system-ui, sans-serif; }
-    #graph-view { position: relative; width: 100%; height: 100%; min-height: 500px; }
-    #network { position: absolute; inset: 0; width: 100%; height: 100%; background: radial-gradient(circle at center, #131A29 0%, #0B0F17 100%); }
+    :root {
+      --color-root: #0A0A0A;
+      --color-surface: #111111;
+      --color-elevated: #161616;
+      --color-accent: #D4A574;
+      --color-accent-bright: #E8C49A;
+      --color-text-primary: #F5F0EB;
+      --color-text-secondary: #A39787;
+      --color-text-muted: #6B5F53;
+      --color-border-subtle: rgba(212, 165, 116, 0.15);
+      --color-border-medium: rgba(212, 165, 116, 0.35);
+    }
+    body {
+      background-color: var(--color-root);
+      color: var(--color-text-primary);
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+    }
+    .font-serif-ua {
+      font-family: "DM Serif Display", Georgia, serif;
+    }
+    .font-mono-ua {
+      font-family: "JetBrains Mono", monospace;
+    }
+    #network {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at center, #141414 0%, #0A0A0A 100%);
+    }
     .panel-scroll::-webkit-scrollbar { width: 6px; }
-    .panel-scroll::-webkit-scrollbar-thumb { background: #2D3748; border-radius: 4px; }
+    .panel-scroll::-webkit-scrollbar-thumb { background: rgba(212, 165, 116, 0.2); border-radius: 4px; }
+    .panel-scroll::-webkit-scrollbar-thumb:hover { background: rgba(212, 165, 116, 0.4); }
     /* Report Markdown styling */
-    .report-prose h1 { font-size: 1.5rem; font-weight: 800; color: #38BDF8; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px solid #1E293B; padding-bottom: 0.5rem; }
-    .report-prose h2 { font-size: 1.25rem; font-weight: 700; color: #F8FAFC; margin-top: 2rem; margin-bottom: 0.5rem; border-bottom: 1px solid #1E293B; padding-bottom: 0.4rem; }
-    .report-prose h3 { font-size: 1.05rem; font-weight: 600; color: #CBD5E1; margin-top: 1.25rem; margin-bottom: 0.4rem; }
-    .report-prose h4 { font-size: 0.95rem; font-weight: 600; color: #94A3B8; margin-top: 1rem; margin-bottom: 0.25rem; }
-    .report-prose p { margin-bottom: 0.75rem; color: #CBD5E1; line-height: 1.6; font-size: 0.825rem; }
-    .report-prose ul, .report-prose ol { margin-left: 1.5rem; margin-bottom: 0.75rem; font-size: 0.825rem; }
-    .report-prose li { margin-bottom: 0.25rem; color: #CBD5E1; }
-    .report-prose code { background: #1E293B; color: #38BDF8; padding: 0.15rem 0.35rem; border-radius: 0.25rem; font-family: monospace; font-size: 0.75rem; }
-    .report-prose pre { background: #0F172A; border: 1px solid #1E293B; border-radius: 0.5rem; padding: 1rem; overflow-x: auto; margin-bottom: 1rem; }
-    .report-prose pre code { background: transparent; padding: 0; color: #34D399; font-size: 0.75rem; }
+    .report-prose h1 { font-family: "DM Serif Display", serif; font-size: 1.6rem; font-weight: normal; color: #E8C49A; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px solid rgba(212, 165, 116, 0.2); padding-bottom: 0.5rem; }
+    .report-prose h2 { font-family: "DM Serif Display", serif; font-size: 1.3rem; font-weight: normal; color: #F5F0EB; margin-top: 2rem; margin-bottom: 0.5rem; border-bottom: 1px solid rgba(212, 165, 116, 0.2); padding-bottom: 0.4rem; }
+    .report-prose h3 { font-size: 1.05rem; font-weight: 600; color: #E8C49A; margin-top: 1.25rem; margin-bottom: 0.4rem; }
+    .report-prose h4 { font-size: 0.95rem; font-weight: 600; color: #A39787; margin-top: 1rem; margin-bottom: 0.25rem; }
+    .report-prose p { margin-bottom: 0.75rem; color: #D5CBBF; line-height: 1.6; font-size: 0.85rem; }
+    .report-prose ul, .report-prose ol { margin-left: 1.5rem; margin-bottom: 0.75rem; font-size: 0.85rem; }
+    .report-prose li { margin-bottom: 0.25rem; color: #D5CBBF; }
+    .report-prose code { background: #161616; color: #E8C49A; padding: 0.15rem 0.35rem; border-radius: 0.25rem; font-family: "JetBrains Mono", monospace; font-size: 0.75rem; border: 1px solid rgba(212, 165, 116, 0.2); }
+    .report-prose pre { background: #111111; border: 1px solid rgba(212, 165, 116, 0.2); border-radius: 0.5rem; padding: 1rem; overflow-x: auto; margin-bottom: 1rem; }
+    .report-prose pre code { background: transparent; padding: 0; color: #A3E635; font-size: 0.75rem; border: none; }
     .report-prose table { width: 100%; border-collapse: collapse; margin-bottom: 1.25rem; font-size: 0.775rem; }
-    .report-prose th { background: #1E293B; color: #E2E8F0; text-align: left; padding: 0.5rem 0.75rem; border: 1px solid #334155; }
-    .report-prose td { padding: 0.5rem 0.75rem; border: 1px solid #1E293B; color: #CBD5E1; }
-    .report-prose tr:nth-child(even) { background: rgba(30, 41, 59, 0.4); }
-    .report-prose blockquote { border-left: 3px solid #38BDF8; padding-left: 1rem; color: #94A3B8; margin-bottom: 0.75rem; }
+    .report-prose th { background: #161616; color: #E8C49A; text-align: left; padding: 0.5rem 0.75rem; border: 1px solid rgba(212, 165, 116, 0.25); }
+    .report-prose td { padding: 0.5rem 0.75rem; border: 1px solid rgba(212, 165, 116, 0.15); color: #D5CBBF; }
+    .report-prose tr:nth-child(even) { background: rgba(22, 22, 22, 0.6); }
+    .report-prose blockquote { border-left: 3px solid #D4A574; padding-left: 1rem; color: #A39787; margin-bottom: 0.75rem; }
   </style>
 </head>
-<body class="flex flex-col h-screen overflow-hidden">
-  <!-- Top Navigation Bar -->
-  <header class="h-16 border-b border-gray-800 bg-gray-900/95 backdrop-blur px-6 flex items-center justify-between shrink-0 z-30">
+<body class="flex flex-col h-screen overflow-hidden bg-[#0A0A0A] text-[#F5F0EB]">
+  <!-- Floating Focus Exit Pill (Hidden by default, shown in immersive focus mode) -->
+  <div id="immersive-exit-btn" class="hidden fixed top-3 right-4 z-50">
+    <button onclick="toggleImmersiveCanvas()" class="px-3 py-1.5 rounded-lg bg-[#111111]/90 backdrop-blur border border-[#D4A574]/60 text-[#E8C49A] hover:text-white text-xs font-medium shadow-2xl flex items-center gap-2 transition hover:bg-[#1A1A1A]">
+      <span>✕ Exit Focus</span>
+      <span class="text-[10px] text-[#A39787] font-mono-ua">(Esc)</span>
+    </button>
+  </div>
+
+  <!-- Top Navigation Bar styled identically to Understand-Anything Website -->
+  <header id="main-header" class="h-14 border-b border-[#D4A574]/20 bg-[#0A0A0A]/95 backdrop-blur px-5 flex items-center justify-between shrink-0 z-30 transition-all duration-300">
     <div class="flex items-center gap-3">
-      <div class="w-8 h-8 rounded bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20">
-        UB
-      </div>
-      <div>
-        <h1 class="text-sm font-semibold tracking-wide flex items-center gap-2">
-          <span id="target-title">Understand-Binary Explorer</span>
-          <span id="target-format" class="text-xs px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono">BINARY</span>
-          <span id="target-arch" class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">ARM64</span>
-        </h1>
-        <p class="text-xs text-gray-400" id="target-meta">Verified Technical Architecture & Reconstructed Call Graph</p>
+      <!-- UA Logo Icon & Title -->
+      <a href="/ua" class="flex items-center gap-2.5 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#D4A574] to-[#C9A06C] flex items-center justify-center font-bold text-[#0A0A0A] text-xs shadow-md shadow-[#D4A574]/20 font-serif-ua text-sm">
+          UA
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span class="font-serif-ua text-lg tracking-normal text-[#F5F0EB] group-hover:text-[#E8C49A] transition">Understand Anything</span>
+          <span class="text-[9px] font-mono-ua px-1.5 py-0.5 rounded border border-[#D4A574]/40 bg-[#D4A574]/10 text-[#E8C49A] font-medium tracking-wider uppercase">Binary</span>
+        </div>
+      </a>
+      <span class="text-[#D4A574]/25">|</span>
+      <!-- Target Badge -->
+      <div class="flex items-center gap-1.5">
+        <span id="target-title" class="text-xs font-mono-ua text-[#F5F0EB] font-semibold"></span>
+        <span id="target-format" class="text-[10px] font-mono-ua px-2 py-0.5 rounded-full bg-[#161616] text-[#D4A574] border border-[#D4A574]/30 font-medium uppercase"></span>
+        <span id="target-arch" class="text-[10px] font-mono-ua px-2 py-0.5 rounded-full bg-[#161616] text-[#A39787] border border-white/10 font-medium uppercase"></span>
       </div>
     </div>
 
     <!-- Center Navigation Tabs -->
-    <div class="flex items-center gap-3">
-      <input type="text" id="search-box" oninput="searchGraph(this.value)" placeholder="Search symbols, functions..." class="px-3 py-1.5 bg-gray-800/80 border border-gray-700 rounded-lg text-xs focus:outline-none focus:border-cyan-500 w-52 text-gray-200">
-      <div class="flex rounded-lg bg-gray-800 p-0.5 text-xs font-medium border border-gray-700">
-        <button id="tab-btn-graph" onclick="switchMainTab('graph')" class="px-3 py-1 rounded bg-cyan-600 text-white transition">RE Architecture</button>
-        <button id="tab-btn-report" onclick="switchMainTab('report')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition flex items-center gap-1"><span>📋 Security Report</span></button>
-        <button id="tab-btn-path" onclick="switchMainTab('path')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">Call Path</button>
-        <button id="tab-btn-sec" onclick="switchMainTab('sec')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">Findings (<span id="sec-count">0</span>)</button>
-        <button id="tab-btn-chat" onclick="switchMainTab('chat')" class="px-3 py-1 rounded text-gray-400 hover:text-white transition">AI Chat</button>
+    <div class="flex items-center gap-2">
+      <div class="flex rounded-lg bg-[#141414] p-1 text-xs font-medium border border-[#D4A574]/20">
+        <button id="tab-btn-flow" onclick="switchMainTab('flow')" class="px-3.5 py-1 rounded-md bg-[#D4A574] text-[#0A0A0A] font-semibold transition flex items-center gap-1.5 shadow-sm">
+          <span>⚡ Nodes Flow</span>
+        </button>
+        <button id="tab-btn-physics" onclick="switchMainTab('physics')" class="px-3 py-1 rounded-md text-[#A39787] hover:text-[#F5F0EB] transition flex items-center gap-1.5">
+          <span>🪐 Force Network</span>
+        </button>
+        <button id="tab-btn-report" onclick="switchMainTab('report')" class="px-3 py-1 rounded-md text-[#A39787] hover:text-[#F5F0EB] transition flex items-center gap-1.5">
+          <span>📋 Security Report</span>
+        </button>
+        <button id="tab-btn-path" onclick="switchMainTab('path')" class="px-3 py-1 rounded-md text-[#A39787] hover:text-[#F5F0EB] transition">
+          Call Path
+        </button>
+        <button id="tab-btn-sec" onclick="switchMainTab('sec')" class="px-3 py-1 rounded-md text-[#A39787] hover:text-[#F5F0EB] transition">
+          Findings (<span id="sec-count">0</span>)
+        </button>
+        <button id="tab-btn-chat" onclick="switchMainTab('chat')" class="px-3 py-1 rounded-md text-[#A39787] hover:text-[#F5F0EB] transition">
+          AI Chat
+        </button>
       </div>
     </div>
 
-    <!-- Right Controls: Open UA in new tab + LLM Settings Trigger -->
-    <div class="flex items-center gap-2.5">
-      <a href="/ua" target="_blank" class="px-2.5 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/80 text-indigo-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition" title="Open Nodes Flow in a dedicated full browser window">
-        <span>Full Flow Window</span>
+    <!-- Right Controls -->
+    <div class="flex items-center gap-2">
+      <button onclick="toggleImmersiveCanvas()" class="px-2.5 py-1.5 rounded-lg bg-[#141414] hover:bg-[#1E1E1E] border border-[#D4A574]/25 text-[#E8C49A] text-xs font-medium flex items-center gap-1.5 transition" title="Toggle 100% immersive canvas (hides header)">
+        <span>⛶ Focus UA</span>
+      </button>
+      <a href="/ua" target="_blank" class="px-2.5 py-1.5 rounded-lg bg-[#141414] hover:bg-[#1E1E1E] border border-[#D4A574]/25 text-[#A39787] hover:text-[#F5F0EB] text-xs font-medium flex items-center gap-1.5 transition" title="Open pure Understand-Anything in new tab">
+        <span>Pure UA</span>
         <span class="text-[10px]">↗</span>
       </a>
-      <button onclick="openLlmModal()" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs transition">
+      <button onclick="openLlmModal()" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#141414] hover:bg-[#1E1E1E] border border-[#D4A574]/25 text-xs transition">
         <span id="llm-status-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
-        <span id="llm-status-text" class="text-gray-300 font-medium">LLM Config</span>
-        <span class="text-gray-400 text-[11px]">⚙️</span>
+        <span id="llm-status-text" class="text-[#A39787] font-medium">LLM Config</span>
+        <span class="text-[#A39787] text-[11px]">⚙️</span>
       </button>
     </div>
   </header>
 
   <!-- Main Workspace -->
   <div class="flex flex-1 relative overflow-hidden">
-    <!-- Network & Flow Graph View -->
-    <div id="graph-view" class="flex-1 w-full h-full relative flex">
+    <!-- View 1: Nodes Flow (Pure Understand-Anything Website View, Full Canvas) -->
+    <div id="flow-view" class="flex-1 w-full h-full relative">
+      <iframe src="/ua?token=ub-open-access" class="w-full h-full border-0 block" id="flow-iframe"></iframe>
+    </div>
+
+    <!-- View 2: Force-directed Physics Canvas -->
+    <div id="physics-view" class="hidden flex-1 w-full h-full relative flex">
       <div class="flex-1 h-full relative overflow-hidden">
-        <!-- Floating View & Mode Switcher -->
-        <div class="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 bg-gray-900/90 backdrop-blur p-1.5 rounded-xl border border-gray-800 shadow-2xl text-xs">
-          <!-- Flow vs Physics Mode Switcher -->
-          <div class="flex rounded-lg bg-gray-800 p-0.5 border border-gray-700">
-            <button id="mode-flow-btn" onclick="setGraphMode('flow')" class="px-3 py-1 rounded-md font-semibold bg-cyan-600 text-white transition flex items-center gap-1.5 shadow-sm">
-              <span>⚡ Nodes Flow</span>
-            </button>
-            <button id="mode-physics-btn" onclick="setGraphMode('physics')" class="px-3 py-1 rounded-md font-medium text-gray-400 hover:text-white transition flex items-center gap-1.5">
-              <span>🌐 Force Graph</span>
-            </button>
-          </div>
-
-          <div class="h-4 w-px bg-gray-800 mx-1"></div>
-
-          <div id="physics-filters" class="hidden flex items-center gap-2">
-            <span class="text-gray-400 font-semibold px-1">Filter:</span>
-            <button id="filter-arch-btn" onclick="setGraphFilter('architecture')" class="px-2.5 py-1 rounded-lg font-medium bg-cyan-600 text-white transition">
-              🏛️ Architecture (<span id="count-arch">0</span>)
-            </button>
-            <button id="filter-services-btn" onclick="setGraphFilter('services')" class="px-2.5 py-1 rounded-lg font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition">
-              ⚡ Modules (<span id="count-services">0</span>)
-            </button>
-            <button id="filter-all-btn" onclick="setGraphFilter('all')" class="px-2.5 py-1 rounded-lg font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition">
-              🌐 All (<span id="count-all">0</span>)
-            </button>
-            <div class="h-4 w-px bg-gray-800 mx-1"></div>
-            <select id="layer-filter-select" onchange="filterByLayer(this.value)" class="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded-lg px-2 py-1 focus:outline-none">
-              <option value="all">All Subsystems</option>
-            </select>
-            <div class="h-4 w-px bg-gray-800 mx-1"></div>
-            <button onclick="if(network) network.fit({ animation: { duration: 400 } })" class="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-cyan-400 rounded-lg text-xs font-medium border border-gray-700" title="Fit All Nodes in View">
-              ⛶ Fit View
-            </button>
-          </div>
+        <!-- Physics Filter Toolbar -->
+        <div class="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 bg-[#111111]/90 backdrop-blur p-1.5 rounded-xl border border-[#D4A574]/30 shadow-2xl text-xs">
+          <span class="text-[#A39787] font-semibold px-1">Filter:</span>
+          <button id="filter-arch-btn" onclick="setGraphFilter('architecture')" class="px-2.5 py-1 rounded-lg font-medium bg-[#D4A574] text-[#0A0A0A] transition">
+            🏛️ Architecture (<span id="count-arch">0</span>)
+          </button>
+          <button id="filter-services-btn" onclick="setGraphFilter('services')" class="px-2.5 py-1 rounded-lg font-medium text-[#A39787] hover:text-[#F5F0EB] hover:bg-[#1A1A1A] transition">
+            ⚡ Modules (<span id="count-services">0</span>)
+          </button>
+          <button id="filter-all-btn" onclick="setGraphFilter('all')" class="px-2.5 py-1 rounded-lg font-medium text-[#A39787] hover:text-[#F5F0EB] hover:bg-[#1A1A1A] transition">
+            🌐 All (<span id="count-all">0</span>)
+          </button>
+          <div class="h-4 w-px bg-white/10 mx-1"></div>
+          <select id="layer-filter-select" onchange="filterByLayer(this.value)" class="bg-[#161616] border border-[#D4A574]/30 text-[#F5F0EB] text-xs rounded-lg px-2 py-1 focus:outline-none">
+            <option value="all">All Subsystems</option>
+          </select>
+          <div class="h-4 w-px bg-white/10 mx-1"></div>
+          <button onclick="if(network) network.fit({ animation: { duration: 400 } })" class="px-2 py-1 bg-[#161616] hover:bg-[#202020] text-[#E8C49A] rounded-lg text-xs font-medium border border-[#D4A574]/30" title="Fit All Nodes in View">
+            ⛶ Fit View
+          </button>
         </div>
-
-        <!-- Mode 1: React Flow (Understand-Anything) Embed (Default & Interactive) -->
-        <div id="flow-container" class="absolute inset-0 w-full h-full">
-          <iframe src="/ua?token=ub-open-access" class="w-full h-full border-0" id="flow-iframe"></iframe>
-        </div>
-
-        <!-- Mode 2: Force-directed Physics Canvas -->
-        <div id="physics-container" class="absolute inset-0 w-full h-full hidden">
-          <div id="network" class="w-full h-full"></div>
-        </div>
+        <div id="network" class="w-full h-full"></div>
       </div>
     </div>
 
-    <!-- Security Assessment Report View (17-section full document) -->
-    <div id="report-view" class="hidden flex-1 flex flex-col bg-gray-950 overflow-hidden">
+    <!-- View 3: Security Assessment Report (17-section full document) -->
+    <div id="report-view" class="hidden flex-1 flex flex-col bg-[#0A0A0A] overflow-hidden">
       <!-- Report Sub-header -->
-      <div class="h-12 border-b border-gray-800 bg-gray-900/80 px-6 flex items-center justify-between shrink-0">
+      <div class="h-12 border-b border-[#D4A574]/20 bg-[#111111]/80 px-6 flex items-center justify-between shrink-0">
         <div class="flex items-center gap-3">
-          <span class="text-xs font-semibold text-white flex items-center gap-1.5">
+          <span class="text-xs font-semibold text-[#F5F0EB] flex items-center gap-1.5 font-serif-ua text-sm">
             <span>📋 Publication-Grade Assessment Report</span>
-            <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono">17 SECTIONS</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#D4A574]/15 text-[#E8C49A] border border-[#D4A574]/40 font-mono-ua">17 SECTIONS</span>
           </span>
-          <span class="text-xs text-gray-500">|</span>
-          <span class="text-xs text-gray-400" id="report-meta">Decompiled via Ghidra 12.1 + AST Scanner</span>
+          <span class="text-[#D4A574]/30">|</span>
+          <span class="text-xs text-[#A39787]" id="report-meta">Decompiled via Ghidra 12.1 + AST Scanner</span>
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="downloadReportMd()" class="px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs border border-gray-700 text-gray-200 transition flex items-center gap-1.5">
+          <button onclick="downloadReportMd()" class="px-3 py-1 rounded-lg bg-[#161616] hover:bg-[#202020] text-xs border border-[#D4A574]/30 text-[#E8C49A] transition flex items-center gap-1.5">
             <span>⬇ Download (.md)</span>
           </button>
-          <button onclick="toggleReportRaw()" id="report-raw-btn" class="px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs border border-gray-700 text-gray-200 transition">
+          <button onclick="toggleReportRaw()" id="report-raw-btn" class="px-3 py-1 rounded-lg bg-[#161616] hover:bg-[#202020] text-xs border border-[#D4A574]/30 text-[#A39787] hover:text-[#F5F0EB] transition">
             Raw Markdown
           </button>
         </div>
@@ -554,61 +620,95 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       <div class="flex-1 overflow-y-auto panel-scroll p-8">
         <div class="max-w-4xl mx-auto">
           <div id="report-rendered" class="report-prose space-y-4">
-            <div class="p-8 text-center text-gray-500 text-xs">Loading Security Assessment Report...</div>
+            <div class="p-8 text-center text-[#A39787] text-xs font-mono-ua">Loading Security Assessment Report...</div>
           </div>
-          <pre id="report-raw" class="hidden p-6 bg-gray-900 rounded-xl border border-gray-800 font-mono text-xs text-gray-300 overflow-x-auto whitespace-pre-wrap"></pre>
+          <pre id="report-raw" class="hidden p-6 bg-[#111111] rounded-xl border border-[#D4A574]/20 font-mono-ua text-xs text-[#D5CBBF] overflow-x-auto whitespace-pre-wrap"></pre>
         </div>
       </div>
     </div>
 
-    <!-- Call Path Explorer View -->
-    <div id="path-view" class="hidden flex-1 p-8 overflow-y-auto bg-gray-950">
+    <!-- View 4: Call Path Explorer View -->
+    <div id="path-view" class="hidden flex-1 p-8 overflow-y-auto bg-[#0A0A0A]">
       <div class="max-w-2xl mx-auto space-y-6">
         <div>
-          <h2 class="text-lg font-bold text-white">Execution-Flow Call Path Explorer</h2>
-          <p class="text-xs text-gray-400 mt-1">Trace verified static call paths between any two functions in the binary.</p>
+          <h2 class="text-xl font-normal font-serif-ua text-[#E8C49A]">Execution-Flow Call Path Explorer</h2>
+          <p class="text-xs text-[#A39787] mt-1">Trace verified static call paths between any two functions in the binary.</p>
         </div>
         <div class="flex gap-3">
-          <input type="text" id="path-source" placeholder="Source function or address (e.g. main_entry)" class="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-200 focus:outline-none focus:border-cyan-500">
-          <input type="text" id="path-target" placeholder="Target function or address (e.g. _exit)" class="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-200 focus:outline-none focus:border-cyan-500">
-          <button onclick="runCallPathSearch()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition">Find Path</button>
+          <input type="text" id="path-source" placeholder="Source function or address (e.g. main_entry)" class="flex-1 px-3 py-2 bg-[#111111] border border-[#D4A574]/30 rounded-lg text-sm text-[#F5F0EB] focus:outline-none focus:border-[#D4A574] font-mono-ua">
+          <input type="text" id="path-target" placeholder="Target function or address (e.g. _exit)" class="flex-1 px-3 py-2 bg-[#111111] border border-[#D4A574]/30 rounded-lg text-sm text-[#F5F0EB] focus:outline-none focus:border-[#D4A574] font-mono-ua">
+          <button onclick="runCallPathSearch()" class="px-4 py-2 bg-[#D4A574] hover:bg-[#E8C49A] text-[#0A0A0A] rounded-lg text-sm font-semibold transition">Find Path</button>
         </div>
-        <div id="path-result-box" class="p-4 bg-gray-900 border border-gray-800 rounded-xl font-mono text-xs text-gray-300 min-h-32">
+        <div id="path-result-box" class="p-4 bg-[#111111] border border-[#D4A574]/20 rounded-xl font-mono-ua text-xs text-[#A39787] min-h-32">
           Enter source and target functions above and click "Find Path".
         </div>
       </div>
     </div>
 
-    <!-- Security Findings View -->
-    <div id="sec-view" class="hidden flex-1 p-8 overflow-y-auto bg-gray-950">
+    <!-- View 5: Security Findings View -->
+    <div id="sec-view" class="hidden flex-1 p-8 overflow-y-auto bg-[#0A0A0A]">
       <div class="max-w-3xl mx-auto space-y-4">
         <div>
-          <h2 class="text-lg font-bold text-white">Security-Oriented Static Findings</h2>
-          <p class="text-xs text-gray-400 mt-1">Automated static analysis detecting dangerous APIs, weak crypto, and embedded credentials.</p>
+          <h2 class="text-xl font-normal font-serif-ua text-[#E8C49A]">Security-Oriented Static Findings</h2>
+          <p class="text-xs text-[#A39787] mt-1">Automated static analysis detecting dangerous APIs, weak crypto, and embedded credentials.</p>
         </div>
         <div id="findings-container" class="space-y-3"></div>
       </div>
     </div>
 
-    <!-- AI Investigation Chat View -->
-    <div id="chat-view" class="hidden flex-1 flex flex-col bg-gray-950 p-6">
+    <!-- View 6: AI Investigation Chat View -->
+    <div id="chat-view" class="hidden flex-1 flex flex-col bg-[#0A0A0A] p-6">
       <div class="flex-1 overflow-y-auto panel-scroll space-y-4 mb-4 max-w-3xl mx-auto w-full" id="chat-messages">
-        <div class="p-4 rounded-xl bg-gray-900/80 border border-gray-800 text-xs text-gray-300">
+        <div class="p-4 rounded-xl bg-[#111111] border border-[#D4A574]/20 text-xs text-[#D5CBBF]">
           <div class="flex items-center justify-between mb-1">
-            <span class="font-bold text-cyan-400">Understand-Binary Investigator</span>
-            <span id="chat-provider-badge" class="font-mono text-[10px] px-2 py-0.5 rounded bg-gray-800 text-gray-300 border border-gray-700">Offline Deterministic</span>
+            <span class="font-serif-ua text-base text-[#E8C49A]">Understand-Binary Investigator</span>
+            <span id="chat-provider-badge" class="font-mono-ua text-[10px] px-2 py-0.5 rounded bg-[#161616] text-[#A39787] border border-white/10">Offline Deterministic</span>
           </div>
           Ask any technical question about this binary (e.g. "Explain the startup sequence", "Find code handling network requests", "Where is encryption or authentication implemented?"). Every response cites verified evidence.
         </div>
       </div>
       <div class="max-w-3xl mx-auto w-full flex gap-2">
-        <input type="text" id="chat-input" onkeydown="if(event.key==='Enter') sendChatMessage()" placeholder="Ask a question about the binary..." class="flex-1 px-4 py-2.5 bg-gray-900 border border-gray-700 rounded-xl text-sm text-gray-200 focus:outline-none focus:border-cyan-500">
-        <button onclick="sendChatMessage()" class="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-medium transition">Ask</button>
+        <input type="text" id="chat-input" onkeydown="if(event.key==='Enter') sendChatMessage()" placeholder="Ask a question about the binary..." class="flex-1 px-4 py-2.5 bg-[#111111] border border-[#D4A574]/30 rounded-xl text-sm text-[#F5F0EB] focus:outline-none focus:border-[#D4A574]">
+        <button onclick="sendChatMessage()" class="px-5 py-2.5 bg-[#D4A574] hover:bg-[#E8C49A] text-[#0A0A0A] rounded-xl text-sm font-semibold transition">Ask</button>
       </div>
     </div>
 
-    <!-- Right Drawer: Technical Inspector -->
-    <aside id="inspector" class="w-96 border-l border-gray-800 bg-gray-900/95 backdrop-blur flex flex-col z-20 shrink-0">
+    <!-- Right Drawer: Technical Inspector (Visible only in Physics Network mode) -->
+    <aside id="inspector" class="hidden w-96 border-l border-[#D4A574]/20 bg-[#0D0D0D]/95 backdrop-blur flex flex-col z-20 shrink-0">
+      <div class="p-4 border-b border-[#D4A574]/20 flex items-center justify-between">
+        <h2 class="text-xs font-semibold uppercase tracking-wider text-[#E8C49A] font-mono-ua">Symbol & Evidence Inspector</h2>
+        <span id="node-provenance-badge" class="text-[10px] px-2 py-0.5 rounded bg-[#D4A574]/10 text-[#E8C49A] border border-[#D4A574]/30 font-mono-ua">VERIFIED FACT</span>
+      </div>
+
+      <div class="p-5 flex-1 overflow-y-auto panel-scroll space-y-4">
+        <div>
+          <h3 id="inspect-name" class="text-base font-bold text-[#F5F0EB] break-all font-mono-ua">Select a Node</h3>
+          <p id="inspect-summary" class="text-xs text-[#A39787] mt-1 leading-relaxed">Click any component, symbol, or API node on the graph to inspect disassembly instructions, memory addresses, and callers/callees.</p>
+        </div>
+
+        <div id="inspect-meta-section" class="hidden space-y-3">
+          <div class="p-3 bg-[#141414] rounded-lg border border-[#D4A574]/20 text-xs space-y-1.5 font-mono-ua">
+            <div class="flex justify-between"><span class="text-[#A39787]">Address:</span> <span id="meta-addr" class="text-[#E8C49A]"></span></div>
+            <div class="flex justify-between"><span class="text-[#A39787]">Role:</span> <span id="meta-role" class="text-amber-400"></span></div>
+            <div class="flex justify-between"><span class="text-[#A39787]">Callers:</span> <span id="meta-callers" class="text-[#F5F0EB]">0</span></div>
+            <div class="flex justify-between"><span class="text-[#A39787]">Callees:</span> <span id="meta-callees" class="text-[#F5F0EB]">0</span></div>
+          </div>
+
+          <div>
+            <label class="text-xs font-semibold text-[#A39787] block mb-1.5 font-mono-ua">Disassembled Instructions</label>
+            <div id="inspect-instructions" class="p-3 bg-[#080808] rounded-lg border border-[#D4A574]/20 text-[11px] font-mono-ua text-emerald-400 overflow-x-auto max-h-60 panel-scroll space-y-1">
+              // Select a function with instructions
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold text-[#A39787] block mb-1.5 font-mono-ua">Architectural Subsystems</label>
+          <div id="layers-list" class="space-y-1.5"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
       <div class="p-4 border-b border-gray-800 flex items-center justify-between">
         <h2 class="text-xs font-semibold uppercase tracking-wider text-gray-400">Symbol & Evidence Inspector</h2>
         <span id="node-provenance-badge" class="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono">VERIFIED FACT</span>
@@ -904,31 +1004,9 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       }
     }
 
-    // Graph Mode Switcher: Flow (React Flow) vs Physics (Vis.js)
+    // Graph Mode Switcher
     function setGraphMode(mode) {
-      const flowContainer = document.getElementById('flow-container');
-      const physicsContainer = document.getElementById('physics-container');
-      const physicsFilters = document.getElementById('physics-filters');
-      const flowBtn = document.getElementById('mode-flow-btn');
-      const physicsBtn = document.getElementById('mode-physics-btn');
-
-      if (mode === 'flow') {
-        flowContainer.classList.remove('hidden');
-        physicsContainer.classList.add('hidden');
-        physicsFilters.classList.add('hidden');
-        flowBtn.className = 'px-3 py-1 rounded-md font-semibold bg-cyan-600 text-white transition flex items-center gap-1.5 shadow-sm';
-        physicsBtn.className = 'px-3 py-1 rounded-md font-medium text-gray-400 hover:text-white transition flex items-center gap-1.5';
-      } else {
-        flowContainer.classList.add('hidden');
-        physicsContainer.classList.remove('hidden');
-        physicsFilters.classList.remove('hidden');
-        physicsBtn.className = 'px-3 py-1 rounded-md font-semibold bg-cyan-600 text-white transition flex items-center gap-1.5 shadow-sm';
-        flowBtn.className = 'px-3 py-1 rounded-md font-medium text-gray-400 hover:text-white transition flex items-center gap-1.5';
-        initPhysicsNetwork();
-        nodesView.refresh();
-        edgesView.refresh();
-        setTimeout(() => { if (network) network.fit({ animation: { duration: 300 } }); }, 100);
-      }
+      switchMainTab(mode === 'flow' ? 'flow' : 'physics');
     }
 
     // Filter Handlers
@@ -938,9 +1016,9 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
         const btn = document.getElementById('filter-' + f + '-btn');
         if (btn) {
           if (f === filter) {
-            btn.className = 'px-2.5 py-1 rounded-lg font-medium bg-cyan-600 text-white transition';
+            btn.className = 'px-2.5 py-1 rounded-lg font-medium bg-[#D4A574] text-[#0A0A0A] transition';
           } else {
-            btn.className = 'px-2.5 py-1 rounded-lg font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition';
+            btn.className = 'px-2.5 py-1 rounded-lg font-medium text-[#A39787] hover:text-[#F5F0EB] hover:bg-[#1A1A1A] transition';
           }
         }
       });
@@ -1039,12 +1117,12 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
         renderedBox.classList.add('hidden');
         rawBox.classList.remove('hidden');
         btn.innerText = 'Rendered View';
-        btn.classList.add('bg-cyan-700', 'text-white');
+        btn.className = 'px-3 py-1 rounded-lg bg-[#D4A574] text-[#0A0A0A] font-semibold text-xs border border-[#D4A574] transition';
       } else {
         rawBox.classList.add('hidden');
         renderedBox.classList.remove('hidden');
         btn.innerText = 'Raw Markdown';
-        btn.classList.remove('bg-cyan-700', 'text-white');
+        btn.className = 'px-3 py-1 rounded-lg bg-[#161616] hover:bg-[#202020] text-xs border border-[#D4A574]/30 text-[#A39787] hover:text-[#F5F0EB] transition';
       }
     }
 
@@ -1059,17 +1137,52 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
       document.body.removeChild(a);
     }
 
+    let isImmersive = false;
+    function toggleImmersiveCanvas() {
+      isImmersive = !isImmersive;
+      const header = document.getElementById('main-header');
+      const exitBtn = document.getElementById('immersive-exit-btn');
+      if (isImmersive) {
+        header.classList.add('hidden');
+        exitBtn.classList.remove('hidden');
+        switchMainTab('flow');
+      } else {
+        header.classList.remove('hidden');
+        exitBtn.classList.add('hidden');
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isImmersive) {
+        toggleImmersiveCanvas();
+      }
+    });
+
     function switchMainTab(tab) {
-      ['graph', 'report', 'path', 'sec', 'chat'].forEach(t => {
+      const inspector = document.getElementById('inspector');
+      ['flow', 'physics', 'report', 'path', 'sec', 'chat'].forEach(t => {
         const el = document.getElementById(t + '-view');
         const btn = document.getElementById('tab-btn-' + t);
         if (el) el.classList.add('hidden');
-        if (btn) btn.className = 'px-3 py-1 rounded text-gray-400 hover:text-white transition';
+        if (btn) btn.className = 'px-3 py-1 rounded-md text-[#A39787] hover:text-[#F5F0EB] hover:bg-[#1A1A1A] transition flex items-center gap-1.5';
       });
+
       const activeEl = document.getElementById(tab + '-view');
       const activeBtn = document.getElementById('tab-btn-' + tab);
       if (activeEl) activeEl.classList.remove('hidden');
-      if (activeBtn) activeBtn.className = 'px-3 py-1 rounded bg-cyan-600 text-white transition';
+      if (activeBtn) activeBtn.className = 'px-3.5 py-1 rounded-md bg-[#D4A574] text-[#0A0A0A] font-semibold transition flex items-center gap-1.5 shadow-sm';
+
+      if (tab === 'physics') {
+        if (inspector) inspector.classList.remove('hidden');
+        initPhysicsNetwork();
+        nodesView.refresh();
+        edgesView.refresh();
+        setTimeout(() => { if (network) network.fit({ animation: { duration: 300 } }); }, 100);
+      } else {
+        // Hide outer inspector on all other tabs so Nodes Flow (UA) and others have 100% full width!
+        if (inspector) inspector.classList.add('hidden');
+      }
+
       if (tab === 'report') {
         loadSecurityReport();
       }
@@ -1358,6 +1471,7 @@ function generateEnhancedDashboardHTML(graphJson: string, irJson: string, findin
 
     // Initialize Badge on load
     updateLlmBadge();
+    switchMainTab('flow');
   </script>
 </body>
 </html>`;
